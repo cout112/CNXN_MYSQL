@@ -130,10 +130,8 @@ def connect_database():
     #Connect to database
     engine=create_engine(f'mysql+mysqlconnector://{MYSQL_USER}@{MYSQL_SERVER}/{MYSQL_DATABASE}')
     connection = engine.connect()
+    global db
     db = scoped_session(sessionmaker(bind=engine))
-
-
-
 
     #Enable rest of buttons if connection is succesful
     button2.config(state='disabled')
@@ -141,6 +139,7 @@ def connect_database():
     button4.config(state="normal")
     button5.config(state="normal")
     # subprocess.call(["./script2.sh", filepath])
+
 
 def button3_clicked():
     filepath = filedialog.askopenfilename(initialdir=BASE_PATH)
