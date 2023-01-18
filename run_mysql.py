@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog
+from PIL import Image, ImageTk
+
 import subprocess
 import os
 import datetime
@@ -16,7 +18,8 @@ MYSQL_SERVER = 'localhost'
 MYSQL_USER = 'root'
 MYSQL_DATABASE = 'facilitiesdesk'
 LOGS_FOLDER = os.path.join(BASE_PATH, 'logs')
-FD_SCRIPTS_PATH = "/home/carlos/ManageEngine/FacilitiesDesk/bin"
+FD_SCRIPTS_PATH = "/root/ManageEngine/FacilitiesDesk/bin"
+NOT_LINUX = True
 
 
 def get_log():
@@ -26,38 +29,52 @@ def get_log():
     return file
 
 def get_config_file():
-    file = open(os.path.join(BASE_PATH, 'config_values.ini'), 'a')
+    file = open(os.path.join(BASE_PATH, 'config_values.ini'), 'r')
     return file
 
+def get_now():
+    return datetime.datetime.now().strftime('%H:%M:%S')
+
 def close_facility_desk(log):
+    """
+    Checks if the application facility desk is up and running by checking the active processes of the computer.
+    If it is running it shuts down using the application shutdown.sh bash script.
+    """
+    if NOT_LINUX:
+        return None
+    
     try:
-        FD_FUNCIONANDO = len([  process for process in subprocess.run(['ps', '-fea'], capture_output=True, text=True).stdout 
+        FD_FUNCIONANDO = 
+        FD_FUNCIONANDO = len([  process for process in subprocess.run(['ps', '-fea'], capture_output=True, text=True).stdout.decode('utf-8').split('\n')
                                 if 'FacilitiesDesk' in process and 'java' in process and 'run.sh' in process])
     except Exception as e:
-        log.write(f'Command: ps, -fea -> Error: {e}\n')
+        log.write(f'{get_now()} Command: ps, -fea -> Error: {e}\n')
         exit(1)
     if FD_FUNCIONANDO > 0:
-        log.write("FacilitiesDesk ESTA FUNCIONANDO\n")
+        log.write(f"{get_now()} FacilitiesDesk ESTA FUNCIONANDO\n")
         subprocess.run(['cd', FD_SCRIPTS_PATH, '&&', './shutdown.sh', '-S'], capture_output=True, text=True)
-        log.write("Esperando a que la aplicación se detenga...\n")
+        log.write(f"{get_now()} Esperando a que la aplicación se detenga...\n")
         CONTADOR = 0
         while CONTADOR < 4 and FD_FUNCIONANDO > 0:
             time.sleep(10)
-            FD_FUNCIONANDO = len([  process for process in subprocess.run(['ps', '-fea'], capture_output=True, text=True).stdout 
+            FD_FUNCIONANDO = len([  process for process in subprocess.run(['ps', '-fea'], capture_output=True, text=True).stdout.decode('utf-8').split('\n') 
                                     if 'FacilitiesDesk' in process and 'java' in process and 'run.sh' in process])
             CONTADOR += 1
         if FD_FUNCIONANDO == 1:
-            log.write("La aplicación FacilitiesDesk no se ha podido parar\n")
+            log.write(f"{get_now()} La aplicación FacilitiesDesk no se ha podido parar\n")
             exit(1)
         else:
-            log.write("La aplicación FacilitiesDesk se ha parado\n")
-    pass
+            log.write(f"{get_now()} La aplicación FacilitiesDesk se ha parado\n")
+    return None
 
 def run_no_socket_db(log):
+    if NOT_LINUX:
+        return None
     try:
         MYSQL_SOCKET = len([process for process in subprocess.run(["ps", "-fea"], stdout=subprocess.PIPE).stdout.decode("utf-8") 
                             if 'FacilitiesDesk' in process and 'mysqld' in process.lower() and 'socket' not in process])
     except Exception as e:
+
         log.write(f'Command: ps, -fea -> Error: {e}\n')
         exit(1)
     if MYSQL_SOCKET > 0:
@@ -71,6 +88,7 @@ def run_no_socket_db(log):
                                 if 'FacilitiesDesk' in process and 'mysqld' in process.lower() and 'socket' not in process])
         except Exception as e:
             log.write(f'Command: ps, -fea -> Error: {e}\n')
+
             exit(1)
         if MYSQL_SINSOCKET == 0:
             print("MYSQL no se ha podido arrancar sin socket")
@@ -82,24 +100,29 @@ def run_no_socket_db(log):
 
 
 def run_socket_db(log):
+    """
+    It checks if the database is running in socket mode and shuts down using stopDB.sh bash script.
+    """
+    if NOT_LINUX:
+        return None
     try:
-        MYSQL_SOCKET = len([process for process in subprocess.run(['ps', '-fea'], capture_output=True, text=True).stdout if 'mysqld' in process and 'socket' in process])
+        MYSQL_SOCKET = len([process for process in subprocess.run(['ps', '-fea'], capture_output=True, text=True).stdout.decode('utf-8').split('\n') if 'mysqld' in process and 'socket' in process])
     except Exception:
         log.write(f'Command: ps, -fea -> Error {Exception}\n')
         exit(1)
     if MYSQL_SOCKET > 0:
-        log.write("Parando MYSQL en modo Socket\n")
+        log.write(f"{get_now()} Parando MYSQL en modo Socket\n")
         subprocess.run(['cd', FD_SCRIPTS_PATH, '&&', './stopDB.sh'], capture_output=True, text=True)
         CONTADOR = 0
         while CONTADOR < 4 and MYSQL_SOCKET > 0:
             time.sleep(10)
-            MYSQL_SOCKET = len([process for process in subprocess.run(['ps', '-fea'], capture_output=True, text=True).stdout if 'mysqld' in process and 'socket' in process])
+            MYSQL_SOCKET = len([process for process in subprocess.run(['ps', '-fea'], capture_output=True, text=True).stdout.decode('utf-8').split('\n') if 'mysqld' in process and 'socket' in process])
             CONTADOR += 1
         if MYSQL_SOCKET > 0:
-            log.write("MYSQL no se ha podido parar en modo socket\n")
+            log.write(f"{get_now()} MYSQL no se ha podido parar en modo socket\n")
             exit(1)
         else:
-            log.write("MYSQL parada.\n")
+            log.write(f"{get_now()} MYSQL parada.\n")
 
 def get_value_from_config(config_file, value):
     for line in config_file.read().split('\n'):
@@ -115,11 +138,11 @@ def activate_no_socket_protocol():
     run_socket_db(log)
     closed_state_id = get_value_from_config(config_file, 'ESTADO_CERRADO')
     mp_id = get_value_from_config(config_file, 'MP')
-    log.write("***PROCESO PARA ASIGNAR LOS RECURSOS A LAS SOLICITUDES DE MP CERRADAS***\n")
-    log.write("*************************************\n")
+    log.write(f"{get_now()} ***PROCESO PARA ASIGNAR LOS RECURSOS A LAS SOLICITUDES DE MP CERRADAS***\n")
+    log.write(f"{get_now()} *************************************\n")
     current_date = datetime.datetime.today().strftime('%y_%m_%d')
-    log.write(f"FECHA PROCESO: {current_date}\n")
-    log.write("***PROCESO PARA ASIGNAR LOS RECURSOS A LAS SOLICITUDES DE MP CERRADAS***\n")
+    log.write(f"{get_now()} FECHA PROCESO: {current_date}\n")
+    log.write(f"{get_now()} ***PROCESO PARA ASIGNAR LOS RECURSOS A LAS SOLICITUDES DE MP CERRADAS***\n")
     log.close()
     button1.config(state='disabled')
     button2.config(state="normal")
@@ -128,10 +151,16 @@ def activate_no_socket_protocol():
 
 def connect_database():
     #Connect to database
-    engine=create_engine(f'mysql+mysqlconnector://{MYSQL_USER}@{MYSQL_SERVER}/{MYSQL_DATABASE}')
-    connection = engine.connect()
+    # engine=create_engine(f'mysql+mysqlconnector://{MYSQL_USER}@{MYSQL_SERVER}/{MYSQL_DATABASE}')
+    
+    # connection = engine.connect()
+    log = get_log()
     global db
-    db = scoped_session(sessionmaker(bind=engine))
+    try:
+        engine=create_engine('mysql+mysqlconnector://root:Adrive_50!mysql@localhost/facilitydeskdb')
+        db = scoped_session(sessionmaker(bind=engine))
+    except Exception as e:
+        log.write(f"{get_now()} Connection to database error: {e}")
 
     #Enable rest of buttons if connection is succesful
     button2.config(state='disabled')
@@ -156,21 +185,27 @@ def button5_clicked():
     print(filepath)
     # subprocess.call(["./script5.sh", filepath])
 
+
+
+
 # Create the window
 root = tk.Tk()
-root.geometry("800x600") # set the size of the main window
-root.title("Bash Script Runner")
+root.geometry("400x600") # set the size of the main window
+root.title("MYSQL DATABASE CONTROLLER")
+logo = Image.open('icloud_icon.png')
+icon = ImageTk.PhotoImage(logo)
+root.wm_iconphoto(False, icon)
 
 # Create a Frame to hold the buttons
 frame = tk.Frame(root)
 frame.pack(side = "right", fill = "both", expand = True)
 
 # Create the buttons
-button1 = tk.Button(frame, text="Initiate safe mode for database", command=activate_no_socket_protocol, width = 90, padx = 20, pady = 20)
-button2 = tk.Button(frame, text="Connect to Database", command=connect_database, state="disabled", width = 90, padx = 20, pady = 20)
-button3 = tk.Button(frame, text="Run Script 3", command=button3_clicked, state="disabled", width = 90, padx = 20, pady = 20)
-button4 = tk.Button(frame, text="Run Script 4", command=button4_clicked, state="disabled", width = 90, padx = 20, pady = 20)
-button5 = tk.Button(frame, text="Run Script 5", command=button5_clicked, state="disabled", width = 90, padx = 20, pady = 20)
+button1 = tk.Button(frame, text="Initiate safe mode for database", command=activate_no_socket_protocol, width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
+button2 = tk.Button(frame, text="Connect to Database", command=connect_database, state="disabled", width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
+button3 = tk.Button(frame, text="Add", command=button3_clicked, state="disabled", width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
+button4 = tk.Button(frame, text="Run Script 4", command=button4_clicked, state="disabled", width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
+button5 = tk.Button(frame, text="Run Script 5", command=button5_clicked, state="disabled", width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
 
 
 # Add the buttons to the main window
