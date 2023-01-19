@@ -8,6 +8,7 @@ import datetime
 import time
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
+import paramiko
 
 
 
@@ -44,7 +45,6 @@ def close_facility_desk(log):
         return None
     
     try:
-        FD_FUNCIONANDO = 
         FD_FUNCIONANDO = len([  process for process in subprocess.run(['ps', '-fea'], capture_output=True, text=True).stdout.decode('utf-8').split('\n')
                                 if 'FacilitiesDesk' in process and 'java' in process and 'run.sh' in process])
     except Exception as e:
@@ -71,7 +71,7 @@ def run_no_socket_db(log):
     if NOT_LINUX:
         return None
     try:
-        MYSQL_SOCKET = len([process for process in subprocess.run(["ps", "-fea"], stdout=subprocess.PIPE).stdout.decode("utf-8") 
+        MYSQL_SOCKET = len([process for process in subprocess.run(["ps", "-fea"], stdout=subprocess.PIPE).stdout.decode("utf-8").split('\n') 
                             if 'FacilitiesDesk' in process and 'mysqld' in process.lower() and 'socket' not in process])
     except Exception as e:
 
@@ -154,13 +154,40 @@ def connect_database():
     # engine=create_engine(f'mysql+mysqlconnector://{MYSQL_USER}@{MYSQL_SERVER}/{MYSQL_DATABASE}')
     
     # connection = engine.connect()
-    log = get_log()
-    global db
-    try:
-        engine=create_engine('mysql+mysqlconnector://root:Adrive_50!mysql@localhost/facilitydeskdb')
-        db = scoped_session(sessionmaker(bind=engine))
-    except Exception as e:
-        log.write(f"{get_now()} Connection to database error: {e}")
+    # log = get_log()
+    # global db
+    # try:
+    #     engine=create_engine('mysql+mysqlconnector://root:Adrive_50!mysql@localhost/facilitydeskdb')
+    #     db = scoped_session(sessionmaker(bind=engine))
+    # except Exception as e:
+    #     log.write(f"{get_now()} Connection to database error: {e}")
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(hostname='89.140.72.212', username='root', password='IH6MFN45Af')
+
+    # Open the SSH Transport
+    transport = client.get_transport()
+
+    # Create the tunnel
+    local_bind_port = 5432
+    remote_bind_address = ('localhost', 8080)
+    local_bind_address = ('127.0.0.1', local_bind_port)
+    tunnel = transport.open_channel('direct-tcpip', remote_bind_address, local_bind_address)
+
+    # Create the engine
+    engine = create_engine(f"postgresql://localhost:8080")
+    db = scoped_session(sessionmaker(bind=engine))
+
+    # Make the database call
+    result = db.execute('show tables;').fetchall()
+    print(result)
+    db.commit()
+
+
+    # Close the tunnel
+    tunnel.close()
+    client.close()
 
     #Enable rest of buttons if connection is succesful
     button2.config(state='disabled')
