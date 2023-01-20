@@ -6,9 +6,11 @@ import subprocess
 import os
 import datetime
 import time
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import scoped_session, sessionmaker
 import paramiko
+from sshtunnel import SSHTunnelForwarder
+import psycopg2
 
 
 
@@ -162,44 +164,230 @@ def connect_database():
     # except Exception as e:
     #     log.write(f"{get_now()} Connection to database error: {e}")
 
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(hostname='89.140.72.212', username='root', password='IH6MFN45Af')
+    # client = paramiko.SSHClient()
+    # client.load_system_host_keys()
+    # client.load_host_keys(os.path.expanduser(''))
+    # client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    # client.connect(hostname='89.140.72.212', username='root', password='IH6MFN45Af')
+    
 
+    #OPT1 do not connect a sqlalchemy connection
+    # client.exec_command('cd /home/ManageEngine/ServiceDesk/bin')
+    # stdin, stdout, stderr = client.exec_command('ls -lah')
+    # print(stdout.read().decode('utf-8'))
+
+    # client.exec_command('sudo /home/ManageEngine/ServiceDesk/pgsql/bin/psql -h localhost -U postgres -p 65432')
+    # client.exec_command('\c servicedesk')
+    # stdin, stdout, stderr = client.exec_command('\dt')
+    # print(stdout.read().decode('utf-8'))
+
+    # channel = client.invoke_shell()
+    # stdin = channel.makefile('wb')
+    # stdout = channel.makefile('rb')
+    
+    # stdin.write('''
+    # sudo /home/ManageEngine/ServiceDesk/pgsql/bin/psql -h localhost -U postgres -p 65432
+    # \c servicedesk
+    # \dt
+    # \q
+    # exit
+    # ''')
+
+    # result = stdout.read().decode('utf-8').split('\n')
+    # for line in result:
+    #     print(line)
+    # stdout.close()
+    # stdin.close()
+
+    #OPT2 connect slqalchymy
     # Open the SSH Transport
-    transport = client.get_transport()
+    # transport = paramiko.Transport(('89.140.72.212', 22))
+    # transport.connect(username='root', password='IH6MFN45Af')
+    # transport = paramiko.Transport(('192.168.1.56', 22))
+    # transport.connect(username='cout112', password='1234')
+    
+    # # Create the tunnel
+    # remote_bind_address = ('localhost', 65432)
+    # local_bind_address = ('192.168.1.56', 65432)
+    # tunnel = transport.open_channel('direct-tcpip', remote_bind_address, local_bind_address)
 
-    # Create the tunnel
-    local_bind_port = 5432
-    remote_bind_address = ('localhost', 8080)
-    local_bind_address = ('127.0.0.1', local_bind_port)
-    tunnel = transport.open_channel('direct-tcpip', remote_bind_address, local_bind_address)
+    # # Create the engine
+    # engine = create_engine(f"postgresql://localhost:65432/servicedesk")
+    # # db = scoped_session(sessionmaker(bind=engine))
+    # connection = engine.connect()
+    
 
-    # Create the engine
-    engine = create_engine(f"postgresql://localhost:8080")
+    # # Make the database call
+    # result = connection.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema='public'"))
+    # for row in result:
+    #     print(row[0])
+    # # result = db.execute('\l').fetchall()
+    # # print(result)
+    # # db.commit()
+
+
+    # # Close the tunnel
+    # tunnel.close()
+
+    # client.close()
+
+
+
+
+    # --------------
+    # CONNECT TO LINUX USING SSH AND RUNNING MULTIPLE COMMANDS CONCATENATED. IT DOES NOT WORK TO ACCESS DATABASE
+    # ssh_client = paramiko.SSHClient()
+    # ssh_client.load_system_host_keys()
+    # ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    # ssh_client.connect(hostname='89.140.72.212', username='root', password='IH6MFN45Af')
+    
+    # commands = ["""
+    #             whoami
+    #             cd /home/ManageEngine/ServiceDesk/pgsql/bin/psql
+    #             pwd
+    #             sudo /home/ManageEngine/ServiceDesk/pgsql/bin/psql -U postgres -p 65432
+    #             \c servicedesk
+    #             SELECT table_name FROM information_schema.tables WHERE table_schema='public';
+    #             ^C
+    #             """]
+    # commands = ["""
+    #             whoami
+    #             cd /home/ManageEngine/ServiceDesk/pgsql/bin
+    #             pwd
+    #             ls -lah
+    #             """]
+
+    # for command in commands:
+    #     stdin, stdout, sterr = ssh_client.exec_command(command)
+    #     time.sleep(1)
+    #     result = stdout.read().decode('utf-8').split('\n')
+    #     for line in result:
+    #         print(f"Result: {line}")
+
+
+    # commands = ["""
+    #             sudo /home/ManageEngine/ServiceDesk/pgsql/bin/psql -U postgres -p 65432 servicedesk
+    #             SELECT table_name FROM information_schema.tables WHERE table_schema='public';
+    #             \q
+    #             """]
+    # for command in commands:
+    #     stdin, stdout, sterr = ssh_client.exec_command(command)
+    #     time.sleep(1)
+    #     result = stdout.read().decode('utf-8').split('\n')
+    #     for line in result:
+    #         print(f"Result: {line}")
+
+    # ssh_client.close()
+    # --------------
+
+
+    # --------------
+    # CONNECT TO DATABASE DIRECTLY BY USING ITS IP ADDRESS AND PORT WITH SQLALCHEMY
+    # engine = create_engine('postgresql://postgres@89.140.72.212:65432/servicedesk')
+    # db = scoped_session(sessionmaker(bind=engine))
+    # result = db.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema='public';""").fetchall()
+    # print(result)
+    # --------------
+
+
+
+    # --------------
+    # CONNECT TO DATABASE USING A SSH TUNNEL AND SQLALCHEMY
+    # server =    SSHTunnelForwarder(
+    #         ('89.140.72.212', 22),
+    #         ssh_username = 'root',
+    #         ssh_password = 'IH6MFN45Af',
+    #         remote_bind_address = ('127.0.0.1', 65432)
+    # )
+    # server.start()
+    # local_port = server.local_bind_port
+
+
+    # engine = create_engine('postgresql://postgres@:65432/servicedesk')
+    # db = scoped_session(sessionmaker(bind=engine))
+    # result = db.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema='public';""").fetchall()
+
+    # print(result)
+    # --------------
+
+
+    # --------------
+    # CREATE A TUNNEL USING SSHTUNNERFORWARDER AND EXECUTE COMMANDS INSIDE LINUX
+    # global server
+    # server =    SSHTunnelForwarder(
+    #         ('89.140.72.212', 22),
+    #         ssh_username = 'root',
+    #         ssh_password = 'IH6MFN45Af',
+    #         remote_bind_address = ('127.0.0.1', 65432)
+    # )
+    # server.start()
+    # local_port = server.local_bind_port
+    # print(local_port)
+    # --------------
+    
+
+
+    # --------------
+    # OPEN A SUSTAINED TUNNEL THROUGH THE CMD PROMT LINE WITH THE NEXT COMMAND
+    # ssh -N -L localhost:8888:localhost:65432 root@89.140.72.212
+    # ssh -N -L 8888:localhost:65432 root@89.140.72.212
+    # This makes an openning and binds together local 8888 port to localhost:65432 on remote computer.
+    engine = create_engine('postgresql://postgres:@:8888/servicedesk')
     db = scoped_session(sessionmaker(bind=engine))
+    result = db.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema='public';""").fetchall()
+    for table in result:
+        print(table[0])
+    # --------------
 
-    # Make the database call
-    result = db.execute('show tables;').fetchall()
-    print(result)
-    db.commit()
 
 
-    # Close the tunnel
-    tunnel.close()
-    client.close()
+    # --------------
+    # transport = ssh_client.get_transport()
+    # local_bind_address = ('127.0.0.1', 65432)
+    # remote_bind_address = ('127.0.0.1', 65432)
+    # transport.request_port_forward('127.0.0.1',65432)
+    # --------------
+
+
+    # engine = create_engine(f"postgresql://localhost:65432/servicedesk")
+    # db = scoped_session(sessionmaker(bind=engine))
+
+    # result = db.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema='public';""").fetchall()
+    # for line in result:
+    #     print(result)
+
+
+
+
+    # connection = psycopg2.connect(port=65432, user='postgres', dbname='servicedesk')
+
+    # cursor = connection.cursor()
+
+    # cursor.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema='public';""")
+
+    # tables = cursor.fetchall()
+
+    # for table in tables:
+    #     print(table[0])
+
+    # cursor.close()
+    # connection.close()
 
     #Enable rest of buttons if connection is succesful
     button2.config(state='disabled')
+    text_input.config(state='normal')
     button3.config(state="normal")
     button4.config(state="normal")
     button5.config(state="normal")
     # subprocess.call(["./script2.sh", filepath])
 
 
-def button3_clicked():
-    filepath = filedialog.askopenfilename(initialdir=BASE_PATH)
-    print(filepath)
+def execute_code():
+    text = text_input.get('1.0', 'end-1c')
+    text_input.delete('1.0', 'end')
+    
+    os.system(text)
     # subprocess.call(["./script3.sh", filepath])
 
 def button4_clicked():
@@ -230,14 +418,18 @@ frame.pack(side = "right", fill = "both", expand = True)
 # Create the buttons
 button1 = tk.Button(frame, text="Initiate safe mode for database", command=activate_no_socket_protocol, width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
 button2 = tk.Button(frame, text="Connect to Database", command=connect_database, state="disabled", width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
-button3 = tk.Button(frame, text="Add", command=button3_clicked, state="disabled", width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
+text_input = tk.Text(frame, state='disabled', width=40, height=5)
+button3 = tk.Button(frame, text="Execute Code", command=execute_code, state="disabled", width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
 button4 = tk.Button(frame, text="Run Script 4", command=button4_clicked, state="disabled", width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
 button5 = tk.Button(frame, text="Run Script 5", command=button5_clicked, state="disabled", width = 30, padx = 30, pady = 20, font=('Helvetica', 12))
+
+# Change text input size
 
 
 # Add the buttons to the main window
 button1.pack(expand=True)
 button2.pack(expand=True)
+text_input.pack(expand=True)
 button3.pack(expand=True)
 button4.pack(expand=True)
 button5.pack(expand=True)
