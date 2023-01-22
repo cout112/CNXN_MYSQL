@@ -9,7 +9,7 @@ import time
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import scoped_session, sessionmaker
 import paramiko
-from sshtunnel import SSHTunnelForwarder
+from sshtunnel import SSHTunnelForwarder, open_tunnel
 import psycopg2
 
 
@@ -328,16 +328,58 @@ def connect_database():
     
 
 
-    # --------------
-    # OPEN A SUSTAINED TUNNEL THROUGH THE CMD PROMT LINE WITH THE NEXT COMMAND
+    # -------------- WORKS
+    # OPEN A SUSTAINED TUNNEL THROUGH THE CMD PROMT LINE WITH THE NEXT COMMAND 
     # ssh -N -L localhost:8888:localhost:65432 root@89.140.72.212
     # ssh -N -L 8888:localhost:65432 root@89.140.72.212
     # This makes an openning and binds together local 8888 port to localhost:65432 on remote computer.
+    # engine = create_engine('postgresql://postgres:@:8888/servicedesk')
+    # db = scoped_session(sessionmaker(bind=engine))
+    # result = db.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema='public';""").fetchall()
+    # for table in result:
+    #     print(table[0])
+    # --------------
+
+
+    # -------------- WORKS
+    # OPEN A TUNNEL WITH PYTHON CHANGING THE IP CONNECTED AND ACCESSING USING SQLALCHEMY
+    # The key is to open the ssh tunnel using the with statement, and putting the sqlalchemy inside.
+    # with open_tunnel(
+    #     ('89.140.72.212', 22),
+    #     ssh_username = 'root',
+    #     ssh_password = 'IH6MFN45Af',
+    #     remote_bind_address = ('127.0.0.1', 65432),
+    #     local_bind_address = ('127.0.0.1', 8888)
+    # ) as server:
+    #     engine = create_engine('postgresql://postgres:@:8888/servicedesk')
+    #     db = scoped_session(sessionmaker(bind=engine))
+    #     result = db.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema='public';""").fetchall()
+    #     for table in result:
+    #         table_columns = db.execute(f"SELECT * from information_schema.columns where table_schema = 'schema_name' and table_name = '{table[0]}'").fetchall()
+    #         print(f"{table}: {table_columns}")
+    # --------------
+
+
+    # -------------- WORKS
+    # OPEN A TUNNEL WITH PYTHON CHANGING THE IP CONNECTED AND ACCESSING USING SQLALCHEMY
+    # The key is to open the ssh tunnel using the with statement, and putting the sqlalchemy inside.
+    tunnel = open_tunnel(
+        ('89.140.72.212', 22),
+        ssh_username = 'root',
+        ssh_password = 'IH6MFN45Af',
+        remote_bind_address = ('127.0.0.1', 65432),
+        local_bind_address = ('127.0.0.1', 8888)
+    )
+    tunnel.start()
     engine = create_engine('postgresql://postgres:@:8888/servicedesk')
     db = scoped_session(sessionmaker(bind=engine))
     result = db.execute("""SELECT table_name FROM information_schema.tables WHERE table_schema='public';""").fetchall()
-    for table in result:
-        print(table[0])
+    for i, table in enumerate(result):
+        table_columns = db.execute(f"SELECT * from information_schema.columns where table_schema = 'schema_name' and table_name = '{table[0]}'").fetchall()
+        print(f"{table[0]}: {table_columns}")
+        if i > 20:
+            break
+    tunnel.stop()
     # --------------
 
 
