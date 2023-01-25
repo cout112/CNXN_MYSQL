@@ -12,6 +12,10 @@ import paramiko
 import sshtunnel
 
 import pandas as pd
+import matplotlib.pyplot as plt
+import networkx as nx
+import plotly.graph_objects as go
+from pyvis.network import Network
 
 
 
@@ -448,22 +452,20 @@ def main():
 
 
 
-
-        
-
-    def get_database_file(prompt_message='Abrir', filename=None):
+    def get_database_file(prompt_message='Abrir', filename=None, initial_dir = None):
         """
         Allows the user to select one database from the previously stored dumps.
         """
+        initial_dir = DUMPS_PATH if initial_dir is None else initial_dir
         database_path = None
         # Get the database to compare to
         if filename is None:
-            database_path = filedialog.askopenfilename(title=prompt_message, initialdir=DUMPS_PATH)
+            database_path = filedialog.askopenfilename(title=prompt_message, initialdir=initial_dir)
             while not database_path.endswith('.sql'):
                 log_print(f"File chosen is wrong. Try one ending in .sql")
-                database_path = filedialog.askopenfilename(title=prompt_message, initialdir=DUMPS_PATH)
+                database_path = filedialog.askopenfilename(title=prompt_message, initialdir=initial_dir)
         else:
-            database_path = os.path.join(DUMPS_PATH, filename)
+            database_path = os.path.join(initial_dir, filename)
 
         database_file = open(database_path, 'r')
 
@@ -525,9 +527,9 @@ def main():
         except Exception as e:
             log_print(f"Error executing commands on client terminal. Error: {e}.")
 
-        dump_file = get_database_file(file_name)
+        # dump_file = get_database_file(file_name)
 
-        return dump_file
+        return None
 
 
     def make_database_comparison(old_database, new_database):
@@ -571,6 +573,48 @@ def main():
         return changed
 
 
+    def create_nodes_edges(sql_file):
+        """
+        Turns a file of inserts into database into a nodes and edges list.
+         Args:
+         sql_file: file with the INSERT INTO statements
+        """
+        text = sql_file.read()
+        lines = text.split('\n')
+        names = set()
+        tables = []
+        nodes = []
+        labels = []
+        node_id = 0
+        for line in lines:
+            line = line.strip()
+            if len(line) == 0:
+                continue
+            table = dict()
+            table_name = line.split('(')[0].replace('INSERT INTO ', '')
+            if table_name in names:
+                continue
+            names.add(table_name)
+            table['name'] = table_name
+            labels.append(table_name)
+            node_id += 1
+            nodes.append(node_id)
+            table['columns'] = [name.strip() for name in line.split('(')[1].split(')')[0].split(',')]
+            tables.append(table)
+
+        edges = []
+
+        for i in range(len(tables)-1):
+            for column_name in tables[i]['columns']:
+                if not column_name.endswith('id'):
+                    continue
+                for ii in range(i+1, len(tables)):
+                    if column_name in tables[ii]['columns']:
+                        edges.append((nodes[i], nodes[ii]))
+        
+        return labels, nodes, edges
+          
+
     def shutdown_database():
         """
         Shuts down database.
@@ -579,6 +623,7 @@ def main():
         log_print(f"Trying to shut down Database.")
         try:
             stdin, stdout, sterr = client.exec_command(command)
+            exit_status = stdout.channel.recv_exit_status()
             result = stdout.read().decode('utf-8').split('\n')
             for line in result:
                 if len(line) == 0:
@@ -634,6 +679,16 @@ def main():
             log_print(f"Error executing commands on client terminal. Error: {e}.")
         return None
 
+    def trim_sql_text(text):
+        """
+        From a sql text we get the column names and select only the connected bits of it.
+        Then, it selects the largest connected group and saves it.
+        Then, returns a trimmed version of the sql file with only selected tables.
+        """
+
+
+
+
 
 
 
@@ -680,14 +735,14 @@ def main():
 
 
         # Perform changes in the GUI
-        safe_connect_button.config(state='disabled')
+        # safe_connect_button.config(state='disabled')
         execute_sql_button.config(state="normal")
         text_input.config(state='normal')
         option2.config(state='normal')
         compare_db_button.config(state='normal')
         disconnect_securely_button.config(state='normal')
         create_dump_button.config(state='normal')
-        button6.config(state='normal')
+        create_graph_button.config(state='normal')
         button7.config(state='normal')
         disconnect_button.config(state='normal')
 
@@ -703,14 +758,14 @@ def main():
         connect_to_database()
 
         # Perform changes in the GUI
-        safe_connect_button.config(state='disabled')
+        # safe_connect_button.config(state='disabled')
         execute_sql_button.config(state="normal")
         text_input.config(state='normal')
         option2.config(state='normal')
         compare_db_button.config(state='normal')
         disconnect_securely_button.config(state='normal')
         create_dump_button.config(state='normal')
-        button6.config(state='normal')
+        create_graph_button.config(state='normal')
         button7.config(state='normal')
         disconnect_button.config(state='normal')
 
@@ -1036,12 +1091,15 @@ def main():
         # Get the files to compare
         old_database_file = get_database_file('Antigua')
         new_database_file = get_database_file('Nueva')
-        if new_database_file is None:
-            new_database_file = create_dump()
 
         # Create comparable data structures
         old_statements = create_statements_list(old_database_file, ['COPY'])
         new_statements = create_statements_list(new_database_file, ['COPY'])
+
+
+
+        print(f"Old Stamements: {len(old_statements)}")
+        print(f"New Stamements: {len(new_statements)}")
 
         # Make comparison
         changed = make_database_comparison(old_statements, new_statements)
@@ -1059,9 +1117,28 @@ def main():
         for table in changed:
             for i in range(2, len(table)):
                 text += f"INSERT INTO {table[0]}({','.join(table[1])}), values({','.join(table[i])});\n"
-        sql_file = filedialog.asksaveasfile(title='SAVE SQL', initialdir=INJECTIONS_PATH)
+
+        existing_names = os.listdir(INJECTIONS_PATH)
+        number = 1
+        for name in existing_names:
+            if name.split('-')[:3] == get_date():
+                number = str(int(name.split('_')[3]) + 1)
+
+        name = f"{get_date()}_{number}_complete.sql"
+        sql_file = open(os.path.join(INJECTIONS_PATH, name), 'w')
         sql_file.write(text)
         sql_file.close()
+
+        trimmed_text =  trim_sql_text(text)
+
+        name = f"{get_date()}_{number}_trimmed.sql"
+        sql_file = open(os.path.join(INJECTIONS_PATH, name), 'w')
+        sql_file.write(text)
+        sql_file.close()
+
+        # sql_file = filedialog.asksaveasfile(title='SAVE SQL', initialdir=INJECTIONS_PATH)
+        # sql_file.write(text)
+        # sql_file.close()
         return None
 
 
@@ -1072,7 +1149,7 @@ def main():
 
         # Shutdown database
         shutdown_database()
-        time.sleep(5)
+        # time.sleep(5)
 
         # Make database secure again changing pg_hba.conf files
         secure_database_config_files()
@@ -1091,6 +1168,8 @@ def main():
         it won't change database security to be accessible from the outside
         and it won't start the application service again.
         """
+        # shutdown_database()
+        # time.sleep(5)
         client.close()
         tunnel.close()
         log_print(f"Closed connection without securing it.")
@@ -1102,10 +1181,48 @@ def main():
         create_dump()
         return None
 
-    def button6_clicked():
-        filepath = filedialog.askopenfilename(initialdir=BASE_PATH)
-        print(filepath)
-        # subprocess.call(["./script5.sh", filepath])
+    def create_graph():
+        """
+        Selects a file inthe INECTIONS PATH folder and creates a graph to visualize it.
+        """
+        # Get file
+        sql_file = get_database_file('Select sql injection', initial_dir=INJECTIONS_PATH)
+
+        # Create nodes and edges
+        labels, nodes, edges = create_nodes_edges(sql_file)
+
+        # Plot OPT1
+        # G = nx.Graph()
+        # G.add_nodes_from(nodes)
+        # G.add_edges_from(edges)
+        # nx.draw(G, with_labels=True)
+        # plt.show()
+
+        # Plot OPT2
+        # fig = go.Figure(layout=go.Layout(title='SQL injection graph'))
+        # fig.add_trace(go.Scatter(x=nodes, y=nodes, mode='markers'))
+        # for edge in edges:
+        #     x, y = edge
+        #     fig.add_trace(go.Scatter(x=[x,y], y=[x,y], mode='lines'))
+        # fig.show(renderer='browser')
+        # fig.write_html('graph.html', auto_open=True)
+
+        # Plot OPT3
+        G = Network(notebook=True, 
+                    cdn_resources='remote',
+                    bgcolor='#222222',
+                    font_color='white',)
+
+        for i in range(len(nodes)):
+            G.add_node(nodes[i], label=labels[i])
+        G.add_edges(edges)
+        G.show_buttons(filter_=['physics'])
+        G.show('graph.html')
+        # path_to_graph = os.path.join(BASE_PATH, 'graph.html')
+
+
+        return None
+        
 
     def button7_clicked():
         filepath = filedialog.askopenfilename(initialdir=BASE_PATH)
@@ -1155,8 +1272,8 @@ def main():
     compare_db_button.grid(row=4, column=1, padx=5, pady=0)
     create_dump_button = tk.Button(frame, text="Download Database", width=20, command=download_dump, state="disabled", font=('Arial', 12))
     create_dump_button.grid(row=4, column=2, padx=5, pady=0)
-    button6 = tk.Button(frame, text="Nothing button", width=20, command=button6_clicked, state="disabled", font=('Arial', 12))
-    button6.grid(row=5, column=1, padx=5, pady=0)
+    create_graph_button = tk.Button(frame, text="Create graph", width=20, command=create_graph, state="disabled", font=('Arial', 12))
+    create_graph_button.grid(row=5, column=1, padx=5, pady=0)
     button7 = tk.Button(frame, text="Nothing button", width=20, command=button7_clicked, state="disabled", font=('Arial', 12))
     button7.grid(row=5, column=2, padx=5, pady=0)
     
