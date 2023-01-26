@@ -34,6 +34,7 @@ PGSQL_DATA_PATH = '/home/ManageEngine/ServiceDesk/pgsql/data'
 PGSQL_BIN_PATH = '/home/ManageEngine/ServiceDesk/pgsql/bin'
 DUMPS_PATH = os.path.join(BASE_PATH, 'DUMPS')
 INJECTIONS_PATH = os.path.join(BASE_PATH, 'AUTOMATIC_INJECTIONS')
+GRAPHS_PATH = os.path.join(BASE_PATH, 'GRAPHS')
 
 
 
@@ -535,6 +536,7 @@ def main():
         except Exception as e:
             log_print(f"Error executing commands on client terminal. Error: {e}.")
 
+        log_print('Finish creating dump.')
         # dump_file = get_database_file(file_name)
 
         return None
@@ -635,7 +637,7 @@ def main():
         complete_edges = []
         tables_constraints = create_statements_list(complete_dump_file, ['CREATE TABLE', 'ALTER TABLE'])
         database_tables = dict()
-        id = 0
+        id = -1
         for statement in tables_constraints:
 
             # Create the tables
@@ -726,7 +728,13 @@ def main():
             # Add nodes
             table_name = line.split('(')[0].split()[-1]
             changed_nodes.append(database_tables[table_name]['id'])
-            changed_labels.append(table_name)
+            connected_columns = [
+                                    f"-{database_tables[table_name]['foreign names'][i]}: {database_tables[table_name]['foreign columns'][i]} > {database_tables[table_name]['columns'][i]}"
+                                    for i, node_num in enumerate(database_tables[table_name]['foreign nodes'])
+                                    if node_num != ""
+                                ]
+            table_label = 'TABLE: ' + table_name + '\n' + '\n'.join(connected_columns)
+            changed_labels.append(table_label)
 
         for edge in complete_edges:
             x, y = edge
@@ -736,12 +744,25 @@ def main():
             if x in changed_nodes:
                 indirectly_affected_edges.add(edge)
                 affected_nodes.append(y)
-                affected_labels.append(list(database_tables.keys())[y])
+                y_name = list(database_tables.keys())[y]
+                connected_columns = [   f"-{database_tables[y_name]['foreign names'][i]}: {database_tables[y_name]['foreign columns'][i]} > {database_tables[y_name]['columns'][i]}" 
+                                        for i, node_num in enumerate(database_tables[y_name]['foreign nodes']) 
+                                        if node_num == x
+                                    ]
+                y_label = 'TABLE: ' + y_name + '\n' + '\n'.join(connected_columns)
+                affected_labels.append(y_label)
                 continue
             if y in changed_nodes:
                 indirectly_affected_edges.add(edge)
                 affected_nodes.append(x)
-                affected_labels.append(list(database_tables.keys())[x])
+                x_name = list(database_tables.keys())[x]
+                y_name = list(database_tables.keys())[y]
+                connected_columns = [   f"-{database_tables[x_name]['foreign names'][i]}: {database_tables[x_name]['foreign columns'][i]} > {database_tables[x_name]['columns'][i]}" 
+                                        for i, node_num in enumerate(database_tables[x_name]['foreign nodes']) 
+                                        if node_num == y
+                                    ]
+                x_label = 'TABLE: ' + x_name + '\n' + '\n'.join(connected_columns)
+                affected_labels.append(x_label)
         
         return changed_labels, affected_labels, changed_nodes, affected_nodes, directly_affected_edges, indirectly_affected_edges
 
@@ -823,7 +844,7 @@ def main():
 
 
 
-
+        return ''
 
 
 
@@ -875,7 +896,7 @@ def main():
         disconnect_securely_button.config(state='normal')
         create_dump_button.config(state='normal')
         create_graph_button.config(state='normal')
-        button7.config(state='normal')
+        add_spaces_button.config(state='normal')
         disconnect_button.config(state='normal')
 
         return None
@@ -898,7 +919,7 @@ def main():
         disconnect_securely_button.config(state='normal')
         create_dump_button.config(state='normal')
         create_graph_button.config(state='normal')
-        button7.config(state='normal')
+        add_spaces_button.config(state='normal')
         disconnect_button.config(state='normal')
 
         return None
@@ -1253,7 +1274,7 @@ def main():
         existing_names = os.listdir(INJECTIONS_PATH)
         number = 1
         for name in existing_names:
-            if name.split('-')[:3] == get_date():
+            if name.split('_')[:3] == get_date().split('_'):
                 number = str(int(name.split('_')[3]) + 1)
 
         name = f"{get_date()}_{number}_complete.sql"
@@ -1266,7 +1287,7 @@ def main():
 
         name = f"{get_date()}_{number}_trimmed.sql"
         sql_file = open(os.path.join(INJECTIONS_PATH, name), 'w')
-        sql_file.write(text)
+        sql_file.write(trimmed_text)
         sql_file.close()
 
         # sql_file = filedialog.asksaveasfile(title='SAVE SQL', initialdir=INJECTIONS_PATH)
@@ -1328,25 +1349,10 @@ def main():
             log_print(f'Exit Create Graph function')
             exit(0)
 
+
         # Create nodes and edges
         log_print(f"Creating a list of nodes and edges")
         changed_labels, affected_labels, changed_nodes, affected_nodes, directly_affected_edges, indirectly_affected_edges = create_nodes_edges(complete_dump_file, injection_file)
-
-        # Plot OPT1
-        # G = nx.Graph()
-        # G.add_nodes_from(nodes)
-        # G.add_edges_from(edges)
-        # nx.draw(G, with_labels=True)
-        # plt.show()
-
-        # Plot OPT2
-        # fig = go.Figure(layout=go.Layout(title='SQL injection graph'))
-        # fig.add_trace(go.Scatter(x=nodes, y=nodes, mode='markers'))
-        # for edge in edges:
-        #     x, y = edge
-        #     fig.add_trace(go.Scatter(x=[x,y], y=[x,y], mode='lines'))
-        # fig.show(renderer='browser')
-        # fig.write_html('graph.html', auto_open=True)
 
         # Plot OPT3
         log_print(f'Representing graph...')
@@ -1354,34 +1360,38 @@ def main():
                     notebook=True, 
                     cdn_resources='remote',
                     bgcolor='#222222',
-                    font_color='white',)
-        G.repulsion(node_distance=300, spring_length=400)
+                    font_color='white',
+                    height=740)
+        G.repulsion(node_distance=400, spring_length=700)
+
 
         # Add changed and affected nodes and labels
         for i in range(len(changed_nodes)):
-            G.add_node(changed_nodes[i], label=changed_labels[i], color='#FD964B', size=25, mass=7, level=1)
+            G.add_node(changed_nodes[i], label=changed_labels[i], color='#FD964B', size=30, mass=7, level=1)
         for i in range(len(affected_nodes)):
-            G.add_node(affected_nodes[i], label=affected_labels[i], color='#6B4F3B', size=7, mass=2, level=2)
+            G.add_node(affected_nodes[i], label=affected_labels[i], color='#6B4F3B', size=10, mass=2, level=2)
 
         # Add directly and indirectly affected edges
         for x, y in directly_affected_edges:
-            G.add_edge(x, y, color='#FD964B', width=8, level=1)
+            G.add_edge(y, x, color='#FD964B', width=8, level=1)
         for x, y in indirectly_affected_edges:
-            G.add_edge(x, y, color='#6B4F3B', width=2, level=2)
+            G.add_edge(y, x, color='#6B4F3B', width=2, level=2)
 
         G.show_buttons(filter_=['physics'])
-        G.show('graph.html')
-        path_to_graph = os.path.join(BASE_PATH, 'graph.html')
+        path_to_graph = os.path.join( GRAPHS_PATH, os.path.basename(complete_dump_file.name) )[:-3] + 'html'
+        G.show( path_to_graph )
         webbrowser.open(path_to_graph)
 
 
         return None
         
 
-    def button7_clicked():
+    def add_spaces():
         filepath = filedialog.askopenfilename(initialdir=BASE_PATH)
         print(filepath)
-        # subprocess.call(["./script5.sh", filepath])
+
+
+        
 
     
     # Create the window
@@ -1428,8 +1438,8 @@ def main():
     create_dump_button.grid(row=4, column=2, padx=5, pady=0)
     create_graph_button = tk.Button(frame, text="Create graph", width=20, command=create_graph, state="disabled", font=('Arial', 12))
     create_graph_button.grid(row=5, column=1, padx=5, pady=0)
-    button7 = tk.Button(frame, text="Nothing button", width=20, command=button7_clicked, state="disabled", font=('Arial', 12))
-    button7.grid(row=5, column=2, padx=5, pady=0)
+    add_spaces_button = tk.Button(frame, text="Nothing button", width=20, command=add_spaces, state="disabled", font=('Arial', 12))
+    add_spaces_button.grid(row=5, column=2, padx=5, pady=0)
     
     # Fifth row
     disconnect_securely_button = tk.Button(frame, text="Iniciar ServiceDesk", width=20, command=disconnect_securely_client, state="disabled", font=('Arial', 12))
