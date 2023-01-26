@@ -16,8 +16,6 @@ INSERT INTO public.ci(ciid,citypeid,ciname,description,label,createddate,lastmod
 INSERT INTO public.cirelationships(cirelationshipid,ciid,ciid2,relationshiptypeid,attributetablename,relationshipid,relationshiptext), values(1,301,16,22,\N,2,USER_DEPARTMENT);
 INSERT INTO public.cirelationships(cirelationshipid,ciid,ciid2,relationshiptypeid,attributetablename,relationshipid,relationshiptext), values(2,16,301,21,\N,1,USER_DEPARTMENT);
 INSERT INTO public.cirelationshipshierarchy(cirelationshipid,cirelationshipid2), values(1,2);
-INSERT INTO public.connectivity_status(record_id,success_time,error_time,status), values(1,2023-01-25 14:21:46.103,\N,CONNECTED_SUCCESSFULLY);
-INSERT INTO public.eventnotification_properties(record_id,property_name,property_value), values(3,lastSuccessfulFetchTime,2023-01-25 14:21:46.852);
 INSERT INTO public.globalconfig(globalconfigid,category,parameter,paramvalue,description,helpdeskid), values(295,TECHAUTOASSIGN,CONSIDER_STOPTIMER,TRUE,Consider Only StopTimer is false status as load to technician,1);
 INSERT INTO public.globalconfig(globalconfigid,category,parameter,paramvalue,description,helpdeskid), values(432,Request_Move,Move_Max_Limit,25,Configuration for Move Tickets max_limit,1);
 INSERT INTO public.globalconfig(globalconfigid,category,parameter,paramvalue,description,helpdeskid), values(106,RedisCache,REDIS_PASSWORD,H4sIAAAAAAAAAEs1NzNIMko00zVKSUrSNTE1MNS1TEox0TWxMDE1NTExMEkzNgYA7+bLeSQAAAA=,Password To Connect Redis,\N);

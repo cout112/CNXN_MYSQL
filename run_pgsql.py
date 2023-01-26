@@ -17,6 +17,8 @@ import networkx as nx
 import plotly.graph_objects as go
 from pyvis.network import Network
 
+import webbrowser
+
 
 
 
@@ -31,7 +33,7 @@ SERVICEDESK_BIN_PATH = '/home/ManageEngine/ServiceDesk/bin'
 PGSQL_DATA_PATH = '/home/ManageEngine/ServiceDesk/pgsql/data'
 PGSQL_BIN_PATH = '/home/ManageEngine/ServiceDesk/pgsql/bin'
 DUMPS_PATH = os.path.join(BASE_PATH, 'DUMPS')
-INJECTIONS_PATH = os.path.join(BASE_PATH, 'AUTOMATIC INJECTIONS')
+INJECTIONS_PATH = os.path.join(BASE_PATH, 'AUTOMATIC_INJECTIONS')
 
 
 
@@ -84,6 +86,12 @@ def main():
         log_output.see('end')
         log_output.config(state='disabled')
         return None
+
+    def find_list(value, check_list):
+        try:
+            return check_list.index(value)
+        except:
+            return -1
 
 
 
@@ -461,7 +469,7 @@ def main():
         # Get the database to compare to
         if filename is None:
             database_path = filedialog.askopenfilename(title=prompt_message, initialdir=initial_dir)
-            while not database_path.endswith('.sql'):
+            while database_path != "" and not database_path.endswith('.sql'):
                 log_print(f"File chosen is wrong. Try one ending in .sql")
                 database_path = filedialog.askopenfilename(title=prompt_message, initialdir=initial_dir)
         else:
@@ -542,20 +550,59 @@ def main():
         new_database: a list of complete sql statements to get info in the database
         from the dump.
         """
+
+        # Extract old tables names
+        old_tables = [line.split()[1] for line in old_database]
+
         changed = []
         for i, new_statement in enumerate(new_database):
+
+            # Check only statements that are not equal in both dumps
             if new_statement not in old_database:
-                
-                # Create table with only new info
+
                 data_table = []
                 new_statement_lines = new_statement.split('\n')
-                old_database_lines = old_database[i].split('\n')
+
+                # Check if table is new
+                new_table_name = new_statement.split()[1]
+                old_tables_index = find_list(new_table_name, old_tables)
+
+                # New table
+                if old_tables_index == -1:
+
+                    # Log results
+                    log_print(f"New table detected: {new_table_name}")
+                    data_table.append(new_table_name)
+                    for ii, line in enumerate(new_statement_lines):
+
+                        # If first line of statement
+                        if ii == 0:
+                            columns = [name.strip() for name in line.split("(")[1].split(')')[0].split(',')]
+                            data_table.append(columns)
+                            continue
+
+                        # If line is empty
+                        if ii == len(new_statement.split('\n')) - 1:
+                            continue
+
+                        # If line is data
+                        data = line.split('\t')
+                        data_table.append(data)
+
+                    continue
+
+
+                # If table exists, create table with only new info
+                old_database_lines = old_database[old_tables_index].split('\n')
+
+                # Log results
+                log_print(f"Existing table changed: {new_table_name} with: {len(old_database_lines)} lines")
+
                 for ii, line in enumerate(new_statement_lines):
-                    
+
                     # Create columns
                     if ii == 0:
-                        database_name = line.split()[1]
-                        data_table.append(database_name)
+                        data_table.append(new_table_name)
                         columns = [name.strip() for name in line.split("(")[1].split(')')[0].split(',')]
                         data_table.append(columns)
                         continue
@@ -570,49 +617,134 @@ def main():
                 # Append table to changed
                 changed.append(data_table)
                 # print(data_table) 
+
         return changed
 
 
-    def create_nodes_edges(sql_file):
+    def create_nodes_edges(complete_dump_file, sql_file):
         """
-        Turns a file of inserts into database into a nodes and edges list.
+        Turns a sql file of insert statements into a nodes and edges list.
+        It downloads all the columns of the tables affected to see the edge direction.
          Args:
+         complete_dump_file: a sql dump file from database, to extract Forein Keys (edges)
          sql_file: file with the INSERT INTO statements
         """
-        text = sql_file.read()
-        lines = text.split('\n')
-        names = set()
-        tables = []
-        nodes = []
-        labels = []
-        node_id = 0
-        for line in lines:
+
+        # Map the whole database
+        complete_nodes = []
+        complete_edges = []
+        tables_constraints = create_statements_list(complete_dump_file, ['CREATE TABLE', 'ALTER TABLE'])
+        database_tables = dict()
+        id = 0
+        for statement in tables_constraints:
+
+            # Create the tables
+            if statement.startswith('CREATE TABLE'):
+                id += 1
+                complete_nodes.append(id)
+                table = dict()
+                table_name = statement.split(' (')[0].split('TABLE ')[-1]
+                table['id'] = id
+                table['name'] = table_name
+                table['columns'] = [name.strip().split()[0] 
+                                    for name in statement.split('\n') 
+                                    if name.strip() != ');' and name.strip().split()[0].lower() == name.strip().split()[0]]
+                table['foreign nodes'] = ['' for i in range(len(table['columns']))]
+                table['foreign names'] = ['' for i in range(len(table['columns']))]
+                table['foreign columns'] = ['' for i in range(len(table['columns']))]
+                database_tables[table_name] = table
+                continue
+
+            # Add Foreign Keys
+            if statement.startswith('ALTER TABLE'):
+
+                # Get only foreign key assignments
+                if statement.find('FOREIGN KEY') == -1:
+                    continue
+
+                split_statement = statement.split('\n')
+                table_name = split_statement[0].split()[-1]
+                constraint_line = split_statement[-1].replace(';','')
+                other_table_name = constraint_line.split('(')[1].split()[-1]
+
+                # Build list of mapped columns
+                is_open = False
+                columns = []
+                column = ''
+                for letter in constraint_line:
+                    if letter == '(':
+                        is_open = True
+                        continue
+                    if letter == ')':
+                        is_open = False
+                        columns.append(column)
+                        column = ''
+                        continue
+                    if is_open:
+                        column += letter
+                
+                current_columns = [name.strip() for name in columns[0].split(',')]
+                related_columns = [name.strip() for name in columns[1].split(',')]
+
+                # Map each column to its correspondent node and column
+                for i, column_name in enumerate(current_columns):
+                    index = database_tables[table_name]['columns'].index(column_name)
+                    database_tables[table_name]['foreign names'][index] = other_table_name
+                    database_tables[table_name]['foreign nodes'][index] = database_tables[other_table_name]['id']
+                    database_tables[table_name]['foreign columns'][index] = related_columns[i]
+
+                    complete_edges.append((database_tables[table_name]['id'], database_tables[other_table_name]['id']))
+
+        # print(f"Complete nodes: {complete_nodes}")
+        # print(f"Complete edges: {complete_edges}")
+        
+        # Print results
+        # for i in range(20):
+        #     for key in database_tables[list(database_tables.keys())[i]]:
+        #         print(f"database_tables['{key}']: {database_tables[list(database_tables.keys())[i]][key]}")
+
+
+        # Create subset of nodes and edges from changed tables
+        injection_text = sql_file.read()
+        injection_lines = injection_text.split('\n')
+
+        changed_nodes = []
+        affected_nodes = []
+        directly_affected_edges = set()
+        indirectly_affected_edges = set()
+        changed_labels = []
+        affected_labels = []
+        
+
+        for line in injection_lines:
             line = line.strip()
+
+            # Remove invalid lines
             if len(line) == 0:
                 continue
-            table = dict()
-            table_name = line.split('(')[0].replace('INSERT INTO ', '')
-            if table_name in names:
+
+            # Add nodes
+            table_name = line.split('(')[0].split()[-1]
+            changed_nodes.append(database_tables[table_name]['id'])
+            changed_labels.append(table_name)
+
+        for edge in complete_edges:
+            x, y = edge
+            if x in changed_nodes and y in changed_nodes:
+                directly_affected_edges.add(edge)
                 continue
-            names.add(table_name)
-            table['name'] = table_name
-            labels.append(table_name)
-            node_id += 1
-            nodes.append(node_id)
-            table['columns'] = [name.strip() for name in line.split('(')[1].split(')')[0].split(',')]
-            tables.append(table)
-
-        edges = []
-
-        for i in range(len(tables)-1):
-            for column_name in tables[i]['columns']:
-                if not column_name.endswith('id'):
-                    continue
-                for ii in range(i+1, len(tables)):
-                    if column_name in tables[ii]['columns']:
-                        edges.append((nodes[i], nodes[ii]))
+            if x in changed_nodes:
+                indirectly_affected_edges.add(edge)
+                affected_nodes.append(y)
+                affected_labels.append(list(database_tables.keys())[y])
+                continue
+            if y in changed_nodes:
+                indirectly_affected_edges.add(edge)
+                affected_nodes.append(x)
+                affected_labels.append(list(database_tables.keys())[x])
         
-        return labels, nodes, edges
+        return changed_labels, affected_labels, changed_nodes, affected_nodes, directly_affected_edges, indirectly_affected_edges
+
           
 
     def shutdown_database():
@@ -1104,11 +1236,11 @@ def main():
         # Make comparison
         changed = make_database_comparison(old_statements, new_statements)
 
-        # Print new data
-        for i, statement in enumerate(changed):
-            log_print(f"TABLE: {i+1}", False)
-            for line in statement:
-                log_print(line, False)
+        # # Print new data
+        # for i, statement in enumerate(changed):
+        #     log_print(f"TABLE: {i+1}", False)
+        #     for line in statement:
+        #         log_print(line, False)
 
         log_print(f"Changed {len(changed)} tables", False)
 
@@ -1125,6 +1257,7 @@ def main():
                 number = str(int(name.split('_')[3]) + 1)
 
         name = f"{get_date()}_{number}_complete.sql"
+        log_print(f"File with extracted new info saved in: {os.path.join(INJECTIONS_PATH, name)}")
         sql_file = open(os.path.join(INJECTIONS_PATH, name), 'w')
         sql_file.write(text)
         sql_file.close()
@@ -1186,10 +1319,18 @@ def main():
         Selects a file inthe INECTIONS PATH folder and creates a graph to visualize it.
         """
         # Get file
-        sql_file = get_database_file('Select sql injection', initial_dir=INJECTIONS_PATH)
+        injection_file = get_database_file('Select sql injection', initial_dir=INJECTIONS_PATH)
+        if injection_file == '':
+            log_print(f'Exit Create Graph function')
+            exit(0)
+        complete_dump_file = get_database_file('FROM DUMP', initial_dir=DUMPS_PATH)
+        if complete_dump_file == '':
+            log_print(f'Exit Create Graph function')
+            exit(0)
 
         # Create nodes and edges
-        labels, nodes, edges = create_nodes_edges(sql_file)
+        log_print(f"Creating a list of nodes and edges")
+        changed_labels, affected_labels, changed_nodes, affected_nodes, directly_affected_edges, indirectly_affected_edges = create_nodes_edges(complete_dump_file, injection_file)
 
         # Plot OPT1
         # G = nx.Graph()
@@ -1208,17 +1349,30 @@ def main():
         # fig.write_html('graph.html', auto_open=True)
 
         # Plot OPT3
-        G = Network(notebook=True, 
+        log_print(f'Representing graph...')
+        G = Network(directed = True,
+                    notebook=True, 
                     cdn_resources='remote',
                     bgcolor='#222222',
                     font_color='white',)
+        G.repulsion(node_distance=300, spring_length=400)
 
-        for i in range(len(nodes)):
-            G.add_node(nodes[i], label=labels[i])
-        G.add_edges(edges)
+        # Add changed and affected nodes and labels
+        for i in range(len(changed_nodes)):
+            G.add_node(changed_nodes[i], label=changed_labels[i], color='#FD964B', size=25, mass=7, level=1)
+        for i in range(len(affected_nodes)):
+            G.add_node(affected_nodes[i], label=affected_labels[i], color='#6B4F3B', size=7, mass=2, level=2)
+
+        # Add directly and indirectly affected edges
+        for x, y in directly_affected_edges:
+            G.add_edge(x, y, color='#FD964B', width=8, level=1)
+        for x, y in indirectly_affected_edges:
+            G.add_edge(x, y, color='#6B4F3B', width=2, level=2)
+
         G.show_buttons(filter_=['physics'])
         G.show('graph.html')
-        # path_to_graph = os.path.join(BASE_PATH, 'graph.html')
+        path_to_graph = os.path.join(BASE_PATH, 'graph.html')
+        webbrowser.open(path_to_graph)
 
 
         return None
@@ -1246,8 +1400,8 @@ def main():
 
     # Create the buttons
     # First row
-    safe_connect_button = tk.Button(frame, text="Connect to client", width=20, command=connect_to_client, font=('Arial', 12))
-    already_connected_button = tk.Button(frame, text="Alreay Connected", width=20, command=already_connected, font=('Arial', 12))
+    safe_connect_button = tk.Button(frame, text="Apagar Servicedesk", width=20, command=connect_to_client, font=('Arial', 12))
+    already_connected_button = tk.Button(frame, text="Conectar", width=20, command=already_connected, font=('Arial', 12))
     safe_connect_button.grid(row=1, column=1, padx=5, pady=10)
     already_connected_button.grid(row=1, column=2, padx=5, pady=10)
     
@@ -1278,9 +1432,9 @@ def main():
     button7.grid(row=5, column=2, padx=5, pady=0)
     
     # Fifth row
-    disconnect_securely_button = tk.Button(frame, text="Disconnect securely", width=20, command=disconnect_securely_client, state="disabled", font=('Arial', 12))
+    disconnect_securely_button = tk.Button(frame, text="Iniciar ServiceDesk", width=20, command=disconnect_securely_client, state="disabled", font=('Arial', 12))
     disconnect_securely_button.grid(row=6, column=1, padx=5, pady=10)
-    disconnect_button = tk.Button(frame, text="Disconnect", width=20, command=disconnect_client, state="disabled", font=('Arial', 12))
+    disconnect_button = tk.Button(frame, text="Desconectar", width=20, command=disconnect_client, state="disabled", font=('Arial', 12))
     disconnect_button.grid(row=6, column=2, padx=5, pady=10)
 
 
