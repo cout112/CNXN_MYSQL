@@ -12,6 +12,7 @@ import paramiko
 import sshtunnel
 
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 import plotly.graph_objects as go
@@ -21,6 +22,8 @@ import webbrowser
 
 
 
+
+# Constant variables
 
 BASE_PATH = os.getcwd()
 SQL_FILES_PATH = os.path.join(BASE_PATH, 'sql')
@@ -35,6 +38,7 @@ PGSQL_BIN_PATH = '/home/ManageEngine/ServiceDesk/pgsql/bin'
 DUMPS_PATH = os.path.join(BASE_PATH, 'DUMPS')
 INJECTIONS_PATH = os.path.join(BASE_PATH, 'AUTOMATIC_INJECTIONS')
 GRAPHS_PATH = os.path.join(BASE_PATH, 'GRAPHS')
+INJECT_DATA_PATH = os.path.join(BASE_PATH, 'METER_DATOS')
 
 
 
@@ -58,7 +62,7 @@ GRAPHS_PATH = os.path.join(BASE_PATH, 'GRAPHS')
 
 
 # -------------------------- HELPER FUNCTIONS -------------------------------
-# These functions will perform smaller repetitive tasks. 
+# These functions will perform repetitive tasks used in STRUCTURE FUNCTIONS
 # They will be called from the structure funcions.
 def main():
     def get_log():
@@ -94,6 +98,80 @@ def main():
         except:
             return -1
 
+    def get_complete_database_map(complete_dump_file):
+        """
+        Given a complete dump sql file, create a complete maps of the database.
+        """
+
+        # Map the whole database
+        complete_nodes = []
+        complete_edges = []
+        complete_labels = []
+        tables_constraints = create_statements_list(complete_dump_file, ['CREATE TABLE', 'ALTER TABLE'])
+        database_tables = dict()
+        id = -1
+        for statement in tables_constraints:
+
+            # Create the tables
+            if statement.startswith('CREATE TABLE'):
+                id += 1
+                table_name = statement.split(' (')[0].split('TABLE ')[-1]
+                complete_nodes.append(id)
+                complete_labels.append(table_name)
+
+                table = dict()
+                table['id'] = id
+                table['name'] = table_name
+                table['columns'] = [name.strip().split()[0] 
+                                    for name in statement.split('\n') 
+                                    if name.strip() != ');' and name.strip().split()[0].lower() == name.strip().split()[0]]
+                table['foreign nodes'] = ['' for i in range(len(table['columns']))]
+                table['foreign names'] = ['' for i in range(len(table['columns']))]
+                table['foreign columns'] = ['' for i in range(len(table['columns']))]
+                database_tables[table_name] = table
+                continue
+
+            # Add Foreign Keys
+            if statement.startswith('ALTER TABLE'):
+
+                # Get only foreign key assignments
+                if statement.find('FOREIGN KEY') == -1:
+                    continue
+
+                split_statement = statement.split('\n')
+                table_name = split_statement[0].split()[-1]
+                constraint_line = split_statement[-1].replace(';','')
+                other_table_name = constraint_line.split('(')[1].split()[-1]
+
+                # Build list of mapped columns
+                is_open = False
+                columns = []
+                column = ''
+                for letter in constraint_line:
+                    if letter == '(':
+                        is_open = True
+                        continue
+                    if letter == ')':
+                        is_open = False
+                        columns.append(column)
+                        column = ''
+                        continue
+                    if is_open:
+                        column += letter
+                
+                current_columns = [name.strip() for name in columns[0].split(',')]
+                related_columns = [name.strip() for name in columns[1].split(',')]
+
+                # Map each column to its correspondent node and column
+                for i, column_name in enumerate(current_columns):
+                    index = database_tables[table_name]['columns'].index(column_name)
+                    database_tables[table_name]['foreign names'][index] = other_table_name
+                    database_tables[table_name]['foreign nodes'][index] = database_tables[other_table_name]['id']
+                    database_tables[table_name]['foreign columns'][index] = related_columns[i]
+
+                    complete_edges.append((database_tables[table_name]['id'], database_tables[other_table_name]['id']))
+
+        return database_tables, complete_nodes, complete_edges, complete_labels
 
 
 
@@ -632,78 +710,8 @@ def main():
          sql_file: file with the INSERT INTO statements
         """
 
-        # Map the whole database
-        complete_nodes = []
-        complete_edges = []
-        tables_constraints = create_statements_list(complete_dump_file, ['CREATE TABLE', 'ALTER TABLE'])
-        database_tables = dict()
-        id = -1
-        for statement in tables_constraints:
-
-            # Create the tables
-            if statement.startswith('CREATE TABLE'):
-                id += 1
-                complete_nodes.append(id)
-                table = dict()
-                table_name = statement.split(' (')[0].split('TABLE ')[-1]
-                table['id'] = id
-                table['name'] = table_name
-                table['columns'] = [name.strip().split()[0] 
-                                    for name in statement.split('\n') 
-                                    if name.strip() != ');' and name.strip().split()[0].lower() == name.strip().split()[0]]
-                table['foreign nodes'] = ['' for i in range(len(table['columns']))]
-                table['foreign names'] = ['' for i in range(len(table['columns']))]
-                table['foreign columns'] = ['' for i in range(len(table['columns']))]
-                database_tables[table_name] = table
-                continue
-
-            # Add Foreign Keys
-            if statement.startswith('ALTER TABLE'):
-
-                # Get only foreign key assignments
-                if statement.find('FOREIGN KEY') == -1:
-                    continue
-
-                split_statement = statement.split('\n')
-                table_name = split_statement[0].split()[-1]
-                constraint_line = split_statement[-1].replace(';','')
-                other_table_name = constraint_line.split('(')[1].split()[-1]
-
-                # Build list of mapped columns
-                is_open = False
-                columns = []
-                column = ''
-                for letter in constraint_line:
-                    if letter == '(':
-                        is_open = True
-                        continue
-                    if letter == ')':
-                        is_open = False
-                        columns.append(column)
-                        column = ''
-                        continue
-                    if is_open:
-                        column += letter
-                
-                current_columns = [name.strip() for name in columns[0].split(',')]
-                related_columns = [name.strip() for name in columns[1].split(',')]
-
-                # Map each column to its correspondent node and column
-                for i, column_name in enumerate(current_columns):
-                    index = database_tables[table_name]['columns'].index(column_name)
-                    database_tables[table_name]['foreign names'][index] = other_table_name
-                    database_tables[table_name]['foreign nodes'][index] = database_tables[other_table_name]['id']
-                    database_tables[table_name]['foreign columns'][index] = related_columns[i]
-
-                    complete_edges.append((database_tables[table_name]['id'], database_tables[other_table_name]['id']))
-
-        # print(f"Complete nodes: {complete_nodes}")
-        # print(f"Complete edges: {complete_edges}")
-        
-        # Print results
-        # for i in range(20):
-        #     for key in database_tables[list(database_tables.keys())[i]]:
-        #         print(f"database_tables['{key}']: {database_tables[list(database_tables.keys())[i]][key]}")
+        # Mapt the whole database
+        database_tables, complete_nodes, complete_edges, complete_labels = get_complete_database_map(complete_dump_file)
 
 
         # Create subset of nodes and edges from changed tables
@@ -839,12 +847,155 @@ def main():
         Then, returns a trimmed version of the sql file with only selected tables.
         """
 
-
-
-
-
+        # Right now this is done manually
 
         return ''
+
+    def extract_tables(base_sql_file):
+        """
+        From a sql file of insert statements, return list of tables.
+        """
+        text = base_sql_file.read()
+        lines = text.split('\n')
+        return list({line.split("(")[0].split()[-1] for line in lines})
+
+    def define_order(tables, labels, nodes, edges):
+        """
+        From a list of tables, use the nodes and edges to find the ordered tree.
+        Keep in mind that the edges are directional, but are saved in opposite
+        direction.
+        """
+        used_nodes = [node for i, node in enumerate(nodes) if labels[i] in tables]
+        used_edges = [edge for edge in edges if edge[0] in used_nodes and edge[1] in used_nodes]
+        
+        parent_nodes = list()
+        # We need to find all tables that have no parent
+        for y, x in used_edges:
+            if x in parent_nodes:
+                continue
+            is_parent = True
+            for yy, xx in used_edges:
+                # If node has a parent
+                if x == y:
+                    is_parent = False
+                    break
+            if is_parent:
+                parent_nodes.append(x)
+
+        # Once we have all the parents, we must go down the tree, using BFS algorithm
+        # And a FIFO pool selection method. We will use the parent_nodes list as pool.
+        visited_nodes = list()
+        while len(parent_nodes) > 0:
+            node = parent_nodes.pop(0)
+            visited_nodes.append(node)
+            for y, x in used_edges:
+                if x == node:
+                    if y not in visited_nodes and y not in parent_nodes:
+                        # Check if there are other parent nodes not visited
+                        all_parents_visited = True
+                        for yy, xx in used_edges:
+                            if y != yy:
+                                continue
+                            if xx == node:
+                                continue
+                            if xx not in parent_nodes and xx not in visited_nodes:
+                                # There exists a parent node not yet visited
+                                all_parents_visited = False
+                                break
+                        
+                        if all_parents_visited:
+                            parent_nodes.append(y)
+
+        # Create ordered labels list from visited_nodes
+        ordered_tables = [labels[nodes.index(node)] for node in visited_nodes]
+
+        print(f"Ordered nodes: {ordered_tables}")
+        
+        return ordered_tables
+
+
+    def get_used_tree(ordered_tables, tree):
+        """
+        Extracts a subtree with only used tables
+        """
+        return {table: tree[table] for table in ordered_tables}
+        
+
+    def get_data_from_excel(file_path):
+        """
+        Returns a dataframe given a file_path
+        """
+        data_frame = pd.read_excel(file_path)
+        return data_frame
+
+
+    def get_rules(injection = 'SPACES'):
+        """
+        This is the place to define the rules that the program has to 
+        follow in order to make the injection and combine with the .xlsx file
+        """
+        injections = ['SPACES']
+        if injection not in injections:
+            log_print(f'{injection} not accepted as valid injection type. Try {injections}')
+            return None
+        
+        if injection == 'SPACES':
+            # Spaces injection detected.
+            
+            rules = """
+            For each line of the excel file, we need to detect which kind of space it is.
+            We can find: Campus, Building, Non Building, Floor, Room, Room Partition, Facility Service
+            For each new space created, it needs to add a connection in the public.spaceparent table.
+            If the space parent is not created (ie, Creating a room in a floor not yet defined)
+            we are going to create, programatically, the floor first.
+            custommoduleinstancespace: 
+            """
+
+
+        return rules
+
+    def create_inserts(data_introduced, used_tree, ordered_tables, rules):
+        """
+        Going each row in the excel, create ordered INSERT INTO statements
+        to introduce data in the database
+        """
+
+        # Detect type of space
+        data_introduced['TYPE'] = np.where( ~data_introduced['ESTANCIA'].isnull(),
+                                            'ROOM',
+                                            np.where(   ~data_introduced['PLANTA'].isnull(),
+                                                        'FLOOR',
+                                                        np.where(~data_introduced['ESTRUCTURA'].isnull(),
+                                                                    'ESTRUCTURA',
+                                                                    'CAMPUS')))
+        data_length = data_introduced.shape[0]
+        
+        # For each new data introduced
+        for i in range(data_length):
+            data_type = data_introduced.iloc[i]['TYPE']
+            print(data_type)
+
+            
+        """
+            For each table in ordered_tables:
+                For each column in table:
+                    Search if foreign key in used_tree
+                    if foreign key:
+                        look for desired ID. How -> rules
+                    else:
+                        look for desired input. How -> rules
+        
+        """
+
+
+
+                
+
+
+
+
+            
+
 
 
 
@@ -1387,8 +1538,35 @@ def main():
         
 
     def add_spaces():
-        filepath = filedialog.askopenfilename(initialdir=BASE_PATH)
-        print(filepath)
+        """
+        Selects an excel file with spaces data to upload to dabase.
+        """
+
+        # Get file 
+        base_sql_file = get_database_file(filename='METER_ESPACIO.sql', initial_dir=INJECT_DATA_PATH)
+        complete_dump_file = get_database_file(filename='5_2023_01_26_creado_espacio.sql', initial_dir=DUMPS_PATH)
+
+        # Create tree
+        log_print(f"Creating a list of nodes and edges")
+        tree, nodes, edges, labels = get_complete_database_map(complete_dump_file)
+        tables = extract_tables(base_sql_file)
+        print(f" Tables: {tables}")
+
+        ordered_tables = define_order(tables, labels, nodes, edges)
+        used_tree = get_used_tree(ordered_tables, tree)
+        rules = get_rules('SPACES')
+        data = get_data_from_excel(os.path.join(INJECT_DATA_PATH, 'Nuevos Espacios.xlsx'))
+        inserts = create_inserts(data, used_tree, ordered_tables, rules)
+
+        # print(inserts)
+
+        return None
+
+        
+
+
+
+
 
 
         
@@ -1438,7 +1616,7 @@ def main():
     create_dump_button.grid(row=4, column=2, padx=5, pady=0)
     create_graph_button = tk.Button(frame, text="Create graph", width=20, command=create_graph, state="disabled", font=('Arial', 12))
     create_graph_button.grid(row=5, column=1, padx=5, pady=0)
-    add_spaces_button = tk.Button(frame, text="Nothing button", width=20, command=add_spaces, state="disabled", font=('Arial', 12))
+    add_spaces_button = tk.Button(frame, text="Añadir espacios", width=20, command=add_spaces, state="disabled", font=('Arial', 12))
     add_spaces_button.grid(row=5, column=2, padx=5, pady=0)
     
     # Fifth row

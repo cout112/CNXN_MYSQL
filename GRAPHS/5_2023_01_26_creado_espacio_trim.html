@@ -1,0 +1,372 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script>function neighbourhoodHighlight(params) {
+  // console.log("in nieghbourhoodhighlight");
+  allNodes = nodes.get({ returnType: "Object" });
+  // originalNodes = JSON.parse(JSON.stringify(allNodes));
+  // if something is selected:
+  if (params.nodes.length > 0) {
+    highlightActive = true;
+    var i, j;
+    var selectedNode = params.nodes[0];
+    var degrees = 2;
+
+    // mark all nodes as hard to read.
+    for (let nodeId in allNodes) {
+      // nodeColors[nodeId] = allNodes[nodeId].color;
+      allNodes[nodeId].color = "rgba(200,200,200,0.5)";
+      if (allNodes[nodeId].hiddenLabel === undefined) {
+        allNodes[nodeId].hiddenLabel = allNodes[nodeId].label;
+        allNodes[nodeId].label = undefined;
+      }
+    }
+    var connectedNodes = network.getConnectedNodes(selectedNode);
+    var allConnectedNodes = [];
+
+    // get the second degree nodes
+    for (i = 1; i < degrees; i++) {
+      for (j = 0; j < connectedNodes.length; j++) {
+        allConnectedNodes = allConnectedNodes.concat(
+          network.getConnectedNodes(connectedNodes[j])
+        );
+      }
+    }
+
+    // all second degree nodes get a different color and their label back
+    for (i = 0; i < allConnectedNodes.length; i++) {
+      // allNodes[allConnectedNodes[i]].color = "pink";
+      allNodes[allConnectedNodes[i]].color = "rgba(150,150,150,0.75)";
+      if (allNodes[allConnectedNodes[i]].hiddenLabel !== undefined) {
+        allNodes[allConnectedNodes[i]].label =
+          allNodes[allConnectedNodes[i]].hiddenLabel;
+        allNodes[allConnectedNodes[i]].hiddenLabel = undefined;
+      }
+    }
+
+    // all first degree nodes get their own color and their label back
+    for (i = 0; i < connectedNodes.length; i++) {
+      // allNodes[connectedNodes[i]].color = undefined;
+      allNodes[connectedNodes[i]].color = nodeColors[connectedNodes[i]];
+      if (allNodes[connectedNodes[i]].hiddenLabel !== undefined) {
+        allNodes[connectedNodes[i]].label =
+          allNodes[connectedNodes[i]].hiddenLabel;
+        allNodes[connectedNodes[i]].hiddenLabel = undefined;
+      }
+    }
+
+    // the main node gets its own color and its label back.
+    // allNodes[selectedNode].color = undefined;
+    allNodes[selectedNode].color = nodeColors[selectedNode];
+    if (allNodes[selectedNode].hiddenLabel !== undefined) {
+      allNodes[selectedNode].label = allNodes[selectedNode].hiddenLabel;
+      allNodes[selectedNode].hiddenLabel = undefined;
+    }
+  } else if (highlightActive === true) {
+    // console.log("highlightActive was true");
+    // reset all nodes
+    for (let nodeId in allNodes) {
+      // allNodes[nodeId].color = "purple";
+      allNodes[nodeId].color = nodeColors[nodeId];
+      // delete allNodes[nodeId].color;
+      if (allNodes[nodeId].hiddenLabel !== undefined) {
+        allNodes[nodeId].label = allNodes[nodeId].hiddenLabel;
+        allNodes[nodeId].hiddenLabel = undefined;
+      }
+    }
+    highlightActive = false;
+  }
+
+  // transform the object into an array
+  var updateArray = [];
+  if (params.nodes.length > 0) {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        // console.log(allNodes[nodeId]);
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  } else {
+    // console.log("Nothing was selected");
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        // console.log(allNodes[nodeId]);
+        // allNodes[nodeId].color = {};
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  }
+}
+
+function filterHighlight(params) {
+  allNodes = nodes.get({ returnType: "Object" });
+  // if something is selected:
+  if (params.nodes.length > 0) {
+    filterActive = true;
+    let selectedNodes = params.nodes;
+
+    // hiding all nodes and saving the label
+    for (let nodeId in allNodes) {
+      allNodes[nodeId].hidden = true;
+      if (allNodes[nodeId].savedLabel === undefined) {
+        allNodes[nodeId].savedLabel = allNodes[nodeId].label;
+        allNodes[nodeId].label = undefined;
+      }
+    }
+
+    for (let i=0; i < selectedNodes.length; i++) {
+      allNodes[selectedNodes[i]].hidden = false;
+      if (allNodes[selectedNodes[i]].savedLabel !== undefined) {
+        allNodes[selectedNodes[i]].label = allNodes[selectedNodes[i]].savedLabel;
+        allNodes[selectedNodes[i]].savedLabel = undefined;
+      }
+    }
+
+  } else if (filterActive === true) {
+    // reset all nodes
+    for (let nodeId in allNodes) {
+      allNodes[nodeId].hidden = false;
+      if (allNodes[nodeId].savedLabel !== undefined) {
+        allNodes[nodeId].label = allNodes[nodeId].savedLabel;
+        allNodes[nodeId].savedLabel = undefined;
+      }
+    }
+    filterActive = false;
+  }
+
+  // transform the object into an array
+  var updateArray = [];
+  if (params.nodes.length > 0) {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  } else {
+    for (let nodeId in allNodes) {
+      if (allNodes.hasOwnProperty(nodeId)) {
+        updateArray.push(allNodes[nodeId]);
+      }
+    }
+    nodes.update(updateArray);
+  }
+}
+
+function selectNode(nodes) {
+  network.selectNodes(nodes);
+  neighbourhoodHighlight({ nodes: nodes });
+  return nodes;
+}
+
+function selectNodes(nodes) {
+  network.selectNodes(nodes);
+  filterHighlight({nodes: nodes});
+  return nodes;
+}
+
+function highlightFilter(filter) {
+  let selectedNodes = []
+  let selectedProp = filter['property']
+  if (filter['item'] === 'node') {
+    let allNodes = nodes.get({ returnType: "Object" });
+    for (let nodeId in allNodes) {
+      if (allNodes[nodeId][selectedProp] && filter['value'].includes((allNodes[nodeId][selectedProp]).toString())) {
+        selectedNodes.push(nodeId)
+      }
+    }
+  }
+  else if (filter['item'] === 'edge'){
+    let allEdges = edges.get({returnType: 'object'});
+    // check if the selected property exists for selected edge and select the nodes connected to the edge
+    for (let edge in allEdges) {
+      if (allEdges[edge][selectedProp] && filter['value'].includes((allEdges[edge][selectedProp]).toString())) {
+        selectedNodes.push(allEdges[edge]['from'])
+        selectedNodes.push(allEdges[edge]['to'])
+      }
+    }
+  }
+  selectNodes(selectedNodes)
+}</script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+            
+            
+            
+            
+            
+
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 740;
+                 background-color: #222222;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+             #config {
+                 float: left;
+                 width: 400px;
+                 height: 600px;
+             }
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+            <div id="config"></div>
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "#FD964B", "font": {"color": "white"}, "id": 811, "label": "TABLE: public.custommoduleinstancespace\n-public.entitydefinition: entity_id \u003e moduleid\n-public.templatedefinition: template_id \u003e templateid\n-public.sduser: userid \u003e created_by\n-public.sduser: userid \u003e last_modified_by\n-public.spacestatusdefinition: statusid \u003e statusid\n-public.sduser: userid \u003e supervisor\n-public.spaceunitdefinition: unitid \u003e spaceunit\n-public.departmentdefinition: deptid \u003e department\n-public.helpdeskdetails: id \u003e helpdeskid", "level": 1, "mass": 7, "shape": "dot", "size": 30}, {"color": "#FD964B", "font": {"color": "white"}, "id": 813, "label": "TABLE: public.custommodulespacehistory\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e custommoduleinstanceid\n-public.sduser: userid \u003e operationownerid", "level": 1, "mass": 7, "shape": "dot", "size": 30}, {"color": "#FD964B", "font": {"color": "white"}, "id": 814, "label": "TABLE: public.custommodulespacehistorydiff\n-public.custommodulespacehistory: historyid \u003e historyid", "level": 1, "mass": 7, "shape": "dot", "size": 30}, {"color": "#FD964B", "font": {"color": "white"}, "id": 1539, "label": "TABLE: public.roomlayoutmapping\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e roomid\n-public.roomlayoutdefinition: layoutid \u003e layoutid", "level": 1, "mass": 7, "shape": "dot", "size": 30}, {"color": "#FD964B", "font": {"color": "white"}, "id": 1753, "label": "TABLE: public.spaceparent\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid\n-public.sitedefinition: siteid \u003e siteid\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e campusid\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e structureid\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e floorid\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e roomid", "level": 1, "mass": 7, "shape": "dot", "size": 30}, {"color": "#FD964B", "font": {"color": "white"}, "id": 1756, "label": "TABLE: public.spacetoamenities\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid\n-public.spaceamenitiesdefinition: amenitiesid \u003e amenitiesid", "level": 1, "mass": 7, "shape": "dot", "size": 30}, {"color": "#FD964B", "font": {"color": "white"}, "id": 1761, "label": "TABLE: public.spacetosupervisormapping\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid\n-public.sduser: userid \u003e supervisorid", "level": 1, "mass": 7, "shape": "dot", "size": 30}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 800, "label": "TABLE: public.custommoduledataspace_301\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e custommoduleinstanceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 801, "label": "TABLE: public.custommoduledataspace_multiselect_301\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e custommoduleinstanceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 899, "label": "TABLE: public.entitydefinition\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1947, "label": "TABLE: public.templatedefinition\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1611, "label": "TABLE: public.sduser\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1755, "label": "TABLE: public.spacestatusdefinition\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1764, "label": "TABLE: public.spaceunitdefinition\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 855, "label": "TABLE: public.departmentdefinition\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 971, "label": "TABLE: public.helpdeskdetails\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 812, "label": "TABLE: public.custommodulespaceattachment\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e custommoduleinstanceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1189, "label": "TABLE: public.notify_space\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1538, "label": "TABLE: public.roomlayoutdefinition\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1752, "label": "TABLE: public.spacedocuments\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1687, "label": "TABLE: public.sitedefinition\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1754, "label": "TABLE: public.spaceri\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1749, "label": "TABLE: public.spaceamenitiesdefinition\n", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1757, "label": "TABLE: public.spacetoassetmapping\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1758, "label": "TABLE: public.spacetocriticalities\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1759, "label": "TABLE: public.spacetofacilityservicemapping\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1760, "label": "TABLE: public.spacetomaintenancemapping\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1762, "label": "TABLE: public.spacetousermapping\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}, {"color": "#6B4F3B", "font": {"color": "white"}, "id": 1763, "label": "TABLE: public.spacetoworkordermapping\n-public.custommoduleinstancespace: custommoduleinstanceid \u003e spaceid", "level": 2, "mass": 2, "shape": "dot", "size": 10}]);
+                  edges = new vis.DataSet([{"arrows": "to", "color": "#FD964B", "from": 813, "level": 1, "to": 814, "width": 8}, {"arrows": "to", "color": "#FD964B", "from": 811, "level": 1, "to": 813, "width": 8}, {"arrows": "to", "color": "#FD964B", "from": 811, "level": 1, "to": 1761, "width": 8}, {"arrows": "to", "color": "#FD964B", "from": 811, "level": 1, "to": 1539, "width": 8}, {"arrows": "to", "color": "#FD964B", "from": 811, "level": 1, "to": 1753, "width": 8}, {"arrows": "to", "color": "#FD964B", "from": 811, "level": 1, "to": 1756, "width": 8}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 801, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 812, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 1611, "level": 2, "to": 811, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 1754, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 1760, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 1758, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 1611, "level": 2, "to": 813, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 1687, "level": 2, "to": 1753, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 1538, "level": 2, "to": 1539, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 1762, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 899, "level": 2, "to": 811, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 800, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 1749, "level": 2, "to": 1756, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 1611, "level": 2, "to": 1761, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 1757, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 1759, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 1189, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 1763, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 971, "level": 2, "to": 811, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 1755, "level": 2, "to": 811, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 855, "level": 2, "to": 811, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 1764, "level": 2, "to": 811, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 811, "level": 2, "to": 1752, "width": 2}, {"arrows": "to", "color": "#6B4F3B", "from": 1947, "level": 2, "to": 811, "width": 2}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {
+    "configure": {
+        "enabled": true,
+        "filter": [
+            "physics"
+        ]
+    },
+    "edges": {
+        "color": {
+            "inherit": true
+        },
+        "smooth": {
+            "enabled": true,
+            "type": "dynamic"
+        }
+    },
+    "interaction": {
+        "dragNodes": true,
+        "hideEdgesOnDrag": false,
+        "hideNodesOnDrag": false
+    },
+    "physics": {
+        "enabled": true,
+        "repulsion": {
+            "centralGravity": 0.2,
+            "damping": 0.09,
+            "nodeDistance": 500,
+            "springConstant": 0.05,
+            "springLength": 900
+        },
+        "solver": "repulsion",
+        "stabilization": {
+            "enabled": true,
+            "fit": true,
+            "iterations": 1000,
+            "onlyDynamicEdges": false,
+            "updateInterval": 50
+        }
+    }
+};
+
+                  
+
+
+                  
+                  // if this network requires displaying the configure window,
+                  // put it in its div
+                  options.configure["container"] = document.getElementById("config");
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>

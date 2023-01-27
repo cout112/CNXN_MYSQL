@@ -1,0 +1,5 @@
+INSERT INTO public.custommoduleinstancespace(custommoduleinstanceid,moduleid,templateid,instance_name,description,created_time,created_by,last_modified_time,last_modified_by,alias,space_area,total_capacity,occupied_capacity,available_capacity,statusid,supervisor,display_image,spaceunit,building_type,structure_type,is_room_partitionable,is_floating_capacity,partition_capacity,department,helpdeskid), values(_ID_,100000038,100000003,Campus test,campus description test,1674732611648,5,\N,\N,campus,150,0,0,\N,100000001,\N,\N,100000001,\N,\N,\N,\N,\N,\N,301);
+INSERT INTO public.roomlayoutmapping(roomid,layoutid,capacity), values(100000005,100000004,20);
+INSERT INTO public.spaceparent(spaceid,siteid,campusid,structureid,floorid,roomid), values(100000001,\N,\N,\N,\N,\N);
+INSERT INTO public.spacetoamenities(spaceid,amenitiesid), values(100000001,100000008);
+INSERT INTO public.spacetosupervisormapping(spaceid,supervisorid), values(100000001,5);
