@@ -925,7 +925,7 @@ def main():
         """
         Returns a dataframe given a file_path
         """
-        data_frame = pd.read_excel(file_path)
+        data_frame = pd.read_excel(file_path, dtype={'PLANTA': 'string'})
         return data_frame
 
 
@@ -954,7 +954,7 @@ def main():
 
         return rules
 
-    def create_inserts(data_introduced, used_tree, ordered_tables, rules):
+    def create_inserts(data_introduced, used_tree, rules):
         """
         Going each row in the excel, create ordered INSERT INTO statements
         to introduce data in the database
@@ -962,34 +962,200 @@ def main():
 
         # Detect type of space
         data_introduced['TYPE'] = np.where( ~data_introduced['ESTANCIA'].isnull(),
-                                            'ROOM',
-                                            np.where(   ~data_introduced['PLANTA'].isnull(),
-                                                        'FLOOR',
-                                                        np.where(~data_introduced['ESTRUCTURA'].isnull(),
-                                                                    'ESTRUCTURA',
-                                                                    'CAMPUS')))
+                                            'ESTANCIA',
+                                            np.where(   
+                                                ~data_introduced['PLANTA'].isnull(),
+                                                'PLANTA',
+                                                np.where(
+                                                    ~data_introduced['ESPACIO'].isnull(),
+                                                    'ESPACIO',
+                                                    np.where(   
+                                                        ~data_introduced['EDIFICIO'].isnull(),
+                                                        'EDIFICIO',
+                                                        np.where(
+                                                            ~data_introduced['CAMPUS'].isnull(),
+                                                            'CAMPUS',
+                                                            'LUGAR')))))
+
         data_length = data_introduced.shape[0]
+
+        module_id_options = [   ('LUGAR','Spaces',100000037, 100000001),
+                                ('CAMPUS','Campuses',100000038, 100000003),
+                                ('EDIFICIO','Buildings',100000040, 100000004),
+                                ('ESPACIO','Nonbuildings',100000041, 100000005),
+                                ('PLANTA','Floors',100000042, 100000006),
+                                ('ESTANCIA','Rooms',100000043, 100000007)]
+
+        current_timestamp = int(datetime.datetime.now().timestamp())
         
         # For each new data introduced
-        for i in range(data_length):
-            data_type = data_introduced.iloc[i]['TYPE']
-            print(data_type)
-
-            
-        """
-            For each table in ordered_tables:
-                For each column in table:
-                    Search if foreign key in used_tree
-                    if foreign key:
-                        look for desired ID. How -> rules
-                    else:
-                        look for desired input. How -> rules
-        
-        """
+        for i in range(data_length-9):
+            data_type = data_introduced.iloc[i]['TYPE'][0]
 
 
+            # Get existing data
+            result = db.execute("SELECT * FROM public.custommoduleinstancespace;")
+            existing_data = pd.DataFrame(result.fetchall(), columns=result.keys())
+            insert_statements = []
+            last_id = existing_data['custommoduleinstanceid'].max()
+
+
+            # Detect how many rows it does have to add
+            connected_previous_id = (None, None)
+            id_connections = []
+            for module in module_id_options:
+                
+                # Find existing module
+                data = data_introduced.iloc[i][module[0]]
+                space_type_code = module[2]
+                space_type_default_code = module[3]
 
                 
+                # Skip if type of structure not met
+                if module[0] == 'EDIFICIO' and data_type == 'ESPACIO':
+                    continue
+                if module[0] == 'ESPACIO' and data_type != 'ESPACIO':
+                    continue
+                if module[0] == 'LUGAR':
+                    continue
+
+                # Check if exists
+                matching_data = existing_data[ (existing_data['moduleid'] == space_type_code) & (existing_data['instance_name'] == data) ]
+                if matching_data.shape[0] == 0:
+
+                    # If it doesn't create the space
+                    last_id += 1
+                    id_connections.append((connected_previous_id, (last_id, module[0])))
+                    insert = {
+                    'custommoduleinstanceid': last_id,
+                    'moduleid': space_type_code,
+                    'templateid': space_type_default_code,
+                    'instance_name': data,
+                    'description': data_introduced.iloc[i]['DESCRIPCIÓN'][0] if data_type == module[0] else 'NULL',
+                    'created_time': current_timestamp,
+                    'created_by': 5,
+                    'last_modified_time': 'NULL',
+                    'last_modified_by': 'NULL',
+                    'alias': str(data).replace(' ','_').lower(),
+                    'space_area': data_introduced.iloc[i]['AREA'][0] if data_type == module[0] else 'NULL',
+                    'total_capacity': 'NULL',
+                    'occupied_capacity': 'NULL',
+                    'available_capacity': 'NULL',
+                    'statusid': 100000001,
+                    'supervisor': 'NULL',
+                    'display_image': 'NULL',
+                    'spaceunit': 100000001,
+                    'building_type': 'Floors and Rooms' if module[0] == 'EDIFICIO' else 'NULL',
+                    'structure_type': 'space_building' if module[0] == 'EDIFICIO' else 'NULL',
+                    'is_room_partitionable': 'f' if module[0] == 'ESTANCIA' else 'NULL',
+                    'is_floating_capacity': 't' if module[0] == 'ESTANCIA' else 'NULL',
+                    'partition_capacity': 'NULL',
+                    'department': 'NULL',
+                    'helpdeskid': 301
+                    }
+                    insert_statement = 'INSERT INTO public.custommoduleinstancespace('
+                    for key, value in insert.items():
+                        insert_statement += key + ','
+                    insert_statement += ') VALUES('
+                    for key, value in insert.items():
+                        if isinstance(value, str):
+                            if value == 'NULL':
+                                insert_statement += value + ','
+                            else:
+                                insert_statement += "'" + value + "'" + ','
+                        else:
+                            insert_statement += str(value) + ','
+                    insert_statement += ');'
+                    insert_statement = insert_statement.replace(',)', ')')
+
+                    insert_statements.append(insert_statement)
+                    connected_previous_id = (last_id, module[0])
+
+                    # Map the space with a supervisor
+                    insert_statement = f'INSERT INTO public.spacetosupervisormapping(spaceid, supervisorid) VALUES({last_id}, 5);'
+                    insert_statements.append(insert_statement)
+
+                    # Get the connnections for the space
+                    is_there_parent = True
+                    connection_stream = [(last_id, module[0])]
+                    check_id = last_id
+                    while is_there_parent:
+                        found = False
+                        for parent, child in id_connections:
+                            
+                            if child[0] == check_id:
+                                found = True
+                                check_id = parent[0]
+                                if parent[0] == None:
+                                    continue
+                                connection_stream.insert(0, parent)
+                        if not found:
+                            is_there_parent = False
+                    
+                    # Create the spacetoparent inserts
+                    insert_statement = f'INSERT INTO public.spaceparent(spaceid,siteid,campusid,structureid,floorid,roomid) VALUES({connection_stream[-1][0]}'
+                    siteid = 'NULL'
+                    campusid = 'NULL'
+                    structureid = 'NULL'
+                    floorid = 'NULL'
+                    roomid = 'NULL'
+                    if len(connection_stream) > 1:
+                        for level in connection_stream:
+                            if level[0] == connection_stream[-1][0]:
+                                continue
+                            if level[1] == 'LUGAR':
+                                siteid = level[0]
+                                continue
+                            if level[1] == 'CAMPUS':
+                                campusid = level[0]
+                                continue
+                            if level[1] == 'EDIFICIO':
+                                structureid = level[0]
+                                continue
+                            if level[1] == 'PLANTA':
+                                floorid = level[0]
+                                continue
+                            if level[1] == 'ESTANCIA':
+                                roomid = level[0]
+                                continue
+                    insert_statement += f", {siteid}, {campusid}, {structureid}, {floorid}, {roomid});"
+                    insert_statements.append(insert_statement)
+
+                else:
+                    # If it does exist, just keep track of id
+                    current_id = matching_data['custommoduleinstanceid'].iloc[0]
+                    current_type = matching_data['moduleid'].iloc[0]
+                    for spanish_name, english_name, space_type_id, default_type_id in module_id_options:
+                        if space_type_id == current_type:
+                            current_space_type = spanish_name
+                            break
+                    # id_connections.append(((current_id, current_space_type), connected_previous_id))
+                    connected_previous_id = (current_id, current_space_type)
+
+                # Do not keep looking after space type reached
+                if module == data_type:
+                    break
+
+        return insert_statements
+
+
+    def execute_inserts(inserts, ordered_tables):
+        """
+        Executes the insert statements in the database in order
+        """
+        # Divide inserts by table
+        ordered_insert_lists = [[] for table in ordered_tables]
+        for insert in inserts:
+            table_name = insert.split('(')[0].split()[-1]
+            ordered_insert_lists[ordered_tables.index(table_name)].append(insert)
+
+        for insert_type in ordered_insert_lists:
+            for insert in insert_type:
+                db.execute(insert)
+            db.commit()
+
+        return None
+             
 
 
 
@@ -1420,7 +1586,7 @@ def main():
         text = ''
         for table in changed:
             for i in range(2, len(table)):
-                text += f"INSERT INTO {table[0]}({','.join(table[1])}), values({','.join(table[i])});\n"
+                text += f"INSERT INTO {table[0]}({','.join(table[1])}) VALUES({','.join(table[i])});\n"
 
         existing_names = os.listdir(INJECTIONS_PATH)
         number = 1
@@ -1556,9 +1722,10 @@ def main():
         used_tree = get_used_tree(ordered_tables, tree)
         rules = get_rules('SPACES')
         data = get_data_from_excel(os.path.join(INJECT_DATA_PATH, 'Nuevos Espacios.xlsx'))
-        inserts = create_inserts(data, used_tree, ordered_tables, rules)
-
-        # print(inserts)
+        inserts = create_inserts(data, used_tree, rules)
+        for insert in inserts:
+            print(insert)
+        execute_inserts(inserts, ordered_tables)
 
         return None
 

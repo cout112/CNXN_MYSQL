@@ -7,6 +7,7 @@ INSERT INTO public.roomlayoutmapping(roomid,layoutid,capacity), values(100000005
 INSERT INTO public.spaceparent(spaceid,siteid,campusid,structureid,floorid,roomid), values(100000001,\N,\N,\N,\N,\N);
 INSERT INTO public.spaceparent(spaceid,siteid,campusid,structureid,floorid,roomid), values(100000002,\N,100000001,\N,\N,\N);
 INSERT INTO public.spaceparent(spaceid,siteid,campusid,structureid,floorid,roomid), values(100000003,\N,100000001,\N,\N,\N);
+INSERT INTO public.spaceparent(spaceid,siteid,campusid,structureid,floorid,roomid), values(100000004,\N,100000001,100000002,\N,\N);
 INSERT INTO public.spaceparent(spaceid,siteid,campusid,structureid,floorid,roomid), values(100000005,\N,100000001,100000002,100000004,\N);
 INSERT INTO public.spacetoamenities(spaceid,amenitiesid), values(100000001,100000008);
 INSERT INTO public.spacetoamenities(spaceid,amenitiesid), values(100000001,100000011);

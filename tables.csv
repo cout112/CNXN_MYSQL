@@ -1,25 +1,12 @@
-,amenitiesid,amenitiesname,description,mediaid,createdby,isdeleted,helpdeskid
-0,100000001,Wheel Chair Access,,100000057,,False,301
-1,100000002,Water Dispenser,,100000058,,False,301
-2,100000003,Vending Machine,,100000059,,False,301
-3,100000004,Waiting Area,,100000060,,False,301
-4,100000005,Playground,,100000061,,False,301
-5,100000006,Indoor Games,,100000062,,False,301
-6,100000007,Pharmacy,,100000063,,False,301
-7,100000008,Fire Safety,,100000064,,False,301
-8,100000009,Laundry,,100000065,,False,301
-9,100000010,Storage Cabinets,,100000066,,False,301
-10,100000011,First Aid Box,,100000067,,False,301
-11,100000012,Bread Maker,,100000068,,False,301
-12,100000013,Wifi Access,,100000069,,False,301
-13,100000014,Dining,,100000070,,False,301
-14,100000015,Sofa,,100000071,,False,301
-15,100000016,Dormitory,,100000072,,False,301
-16,100000017,Doctor on Call,,100000073,,False,301
-17,100000018,Projector,,100000074,,False,301
-18,100000019,ATM,,100000075,,False,301
-19,100000020,Gym,,100000076,,False,301
-20,100000021,Valet Parking,,100000077,,False,301
-21,100000022,Library,,100000078,,False,301
-22,100000023,Uninterrupted Power,,100000079,,False,301
-23,100000024,Mail Room,,100000080,,False,301
+,template_id,entity_id,name,description,is_default,is_deleted,createdby,createdtime,updatedby,updatedtime,style,draft,icon_name,helpdeskid
+0,1,6,General Template,This template is used to create general releases,True,False,,,,,,False,,1
+1,2,6,Emergency Template,This template is used to create emergency releases,False,False,,,,,,False,,1
+2,100000001,6,General Template,This template is used to create general releases,True,False,,,,,,False,,301
+3,100000002,6,Emergency Template,This template is used to create emergency releases,False,False,,,,,,False,,301
+4,100000003,100000038,Default Campus,Default Template,True,False,1.0,,,,,False,,301
+5,100000004,100000040,Default Building,Default Template,True,False,1.0,,,,,False,,301
+6,100000005,100000041,Default Non Building,Default Template,True,False,1.0,,,,,False,,301
+7,100000006,100000042,Default Floor,Default Template,True,False,1.0,,,,,False,,301
+8,100000007,100000043,Default Room,Default Template,True,False,1.0,,,,,False,,301
+9,100000008,100000044,Default Room Partition,Default Template,True,False,1.0,,,,,False,,301
+10,100000009,100000047,Default Facility Service,Default Template,True,False,1.0,,,,,False,,301
